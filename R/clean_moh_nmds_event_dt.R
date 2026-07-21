@@ -36,8 +36,8 @@ clean_moh_nmds_event_dt <- function(moh_nmds_event_raw_dt,
   moh_nmds_event_dt[, `:=`(
     # event_date = as.Date(event_date, format = "%Y-%m-%d"),
     # event_time = as.POSIXct(event_time, format = "%H:%M:%S"),
-    EVENT_START_DATETIME  = as.POSIXct(EVENT_START_DATETIME, format = "%d%b%Y:%H:%M:%S"),
-    EVENT_END_DATETIME  = as.POSIXct(EVENT_END_DATETIME, format = "%d%b%Y:%H:%M:%S"),
+    EVENT_START_DATETIME  = lubridate::dmy_hms( EVENT_START_DATETIME, tz = "Pacific/Auckland"),
+    EVENT_END_DATETIME  = lubridate::dmy_hms( EVENT_END_DATETIME, tz = "Pacific/Auckland"),
     LAST_UPDATED_DATE = lubridate::dmy(LAST_UPDATED_DATE)
   )]
   

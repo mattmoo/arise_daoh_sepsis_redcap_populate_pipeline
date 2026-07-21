@@ -29,13 +29,17 @@ package_list = c(
   "gtsummary",
   "fst",
   # "readxl",
-  # "xlsx",
+  "xlsx",
   "openxlsx",
   "assertthat",
   "stringr",
   "httr2",
   "keyring",
-  "healthcodingnz"
+  "flextable",
+  
+  "cohortflow",
+  "healthcodingnz",
+  "daohtools"
   # "xlsx"
 )
 new.packages <- package_list[!(package_list %in% installed.packages()[,"Package"])]
@@ -59,6 +63,14 @@ conflicts_prefer(lubridate::year)
 tar_plan(
   
   tar_target(
+    redcap_uri,
+    'https://redcap.fmhs.auckland.ac.nz/api/'
+  ),
+  tar_target(
+    daoh_limits,
+    c(0,90)
+  ),
+  tar_target(
     global_initialisation_vector_raw,
     charToRaw('ngatirangiwewehi')
   ),
@@ -75,26 +87,29 @@ tar_plan(
   
   tar_target(
     label_list,
-    list(
-      mort30 = 'Mortality (30-day)',
-      mort90 = 'Mortality (90-day)',
-      age_years = 'Age (years)',
-      gender = 'Gender',
-      priority.ethnicity.desc.L1 = 'Ethnicity (L1, Priority)',
-      priority.ethnicity.desc.L2 = 'Ethnicity (L2, Priority)'
+    c(
+      list(
+        mort30 = 'Mortality (30-day)',
+        mort90 = 'Mortality (90-day)',
+        age_years = 'Age (years)',
+        gender = 'Gender',
+        priority.ethnicity.desc.L1 = 'Ethnicity (L1, Priority)',
+        priority.ethnicity.desc.L2 = 'Ethnicity (L2, Priority)'
+      ),
+      setNames(as.list(redcap_metadata_dt$field_name), redcap_metadata_dt$field_label)
     )
   ),
   
 
   tar_target(
     input_data_directory_path,
-    # '//files.auckland.ac.nz/research/resmed202400055-daoh-sepsis-data/data/raw'
-    'data/raw'
+    '//files.auckland.ac.nz/research/resmed202400055-daoh-sepsis-data/data/raw'
+    # 'data/raw'
   ),
   tar_target(
     lookup_directory_path,
-    # '//files.auckland.ac.nz/research/resmed202400055-daoh-sepsis-data/data/raw'
-    'data/lookup'
+    '//files.auckland.ac.nz/research/resmed202400055-daoh-sepsis-data/data/lookup'
+    # 'data/lookup'
   ),
   tar_target(
     moh_input_data_directory_path,
@@ -430,6 +445,141 @@ tar_plan(
       audit_diags_lookup_dt
     )
   ),
+
+  # Don't uncomment this!
+  # Was used to export to REDCap
+  # tar_target(
+  #   export_to_redcap_result_list,
+  #   export_to_redcap(
+  #     redcap_export_dt,
+  #     nhi_decryption_fn
+  #   )
+  # )
+  
+  # Pull redcap metadata.
+  tar_target(
+    redcap_metadata_dt,
+    pull_redcap_metadata(
+      redcap_uri = redcap_uri,
+      token = keyring::key_get("REDCAP_API", keyring = 'arise')
+    )
+  ),
+  
+  # Pull data and apply metadata.
+  tar_target(
+    redcap_data_dt,
+    pull_redcap_data(
+      redcap_uri = redcap_uri,
+      token = keyring::key_get("REDCAP_API", keyring = 'arise'),
+      redcap_metadata_dt
+    )
+  ),
+  
+  # Get index events for analysis
+  tar_target(
+    index_event_dt,
+    redcap_export_dt[, .(
+      index_event_id = .I,
+      record_id,
+      PRIM_HCU = nhi,
+      nmds_event_id,
+      pms_unique_identifier,
+      ed_presentation_datetime,
+      ed_presentation_date = as.IDate(ed_presentation_datetime)
+    )]
+  ),
+  
+  # Variables for assessing eligibility.
+  tar_target(
+    eligibility_dt,
+    generate_eligibility_dt(
+      arise_eligibility_dt,
+      redcap_data_dt,
+      first_lactate_dt
+    )
+  ),
+  
+  # Cohortflow
+  tar_target(
+    criteria_obj,
+    cf_criteria() |>
+      exclude(~ not_transfer == FALSE, label = "Transfer",  category = "Pre-screen") |>
+      exclude(~ has_lactate == FALSE, label = "No lactate recorded",  category = "Pre-screen") |>
+      exclude(~ high_lactate == FALSE, label = "All lactate within 6 hours <2mmol/L",  category = "Pre-screen") |>
+      exclude(~ infection_code == FALSE, label = "Admission has no infection diagnostic code",  category = "Pre-screen") |>
+      exclude(~ infection_code_first_two == FALSE, label = "Infection code is not primary or secondary",  category = "Pre-screen") |>
+      
+      exclude(~ infection == 'Transfer', label = "Hospital transfer", category = "Records screen") |>
+      exclude(~ infection == 'Not ED Visit', label = "Not ED visit", category = "Records screen") |>
+      exclude(~ is.na(infection) | infection == 'Not Available' | infection == 'Not recorded', label = "Suspected infection unknown", category = "Records screen") |>
+      exclude(~ infection == 'Not Infection', label = "No suspected infection", category = "Records screen") |>
+      exclude(~ bp90_fluid_6hr == 'No', label = "BP>=90mmHg after 1L fluid", category = "Records screen") |>
+      exclude(~ first_lactate_result <= 2, label = "First Lactate <= 2mmol/L", category = "Records screen") |>
+      
+      exclude(~ is.na(arise_exclusion), label = "REDCap missing", category = "ARISE criteria") |>
+      exclude(~ arise_exclusion == 'Hypotension not due to sepsis', label = "Hypotension not due to sepsis", category = "ARISE criteria") |>
+      exclude(~ arise_exclusion == 'Severe CHF/ESRF/other comorbidity precluding fluids or vasopressor', label = "Comorbidity precluding fluids or vasopressor", category = "ARISE criteria") |>
+      exclude(~ arise_exclusion == 'DKA/severe gastro needing high fluid volumes', label = "DKA/severe gastro needing high fluid volumes", category = "ARISE criteria") |>
+      exclude(~ arise_exclusion == 'Ceiling of care not for ICU', label = "Ceiling of care not for ICU", category = "ARISE criteria") |>
+      exclude(~ arise_exclusion == 'Death imminent/inevitable', label = "Death imminent/inevitable", category = "ARISE criteria") |> 
+      exclude(~ arise_exclusion == 'Underlying disease with death likely in < 90 days', label = "Underlying disease with death likely in < 90 days", category = "ARISE criteria")
+  ),
+  
+  tar_target(
+    cohortflow_obj,
+    apply_criteria(
+      eligibility_dt, 
+      criteria_obj)
+  ),
+  
+  tar_target(
+    attr_tbl,
+    as_attrition_tibble(cohortflow_obj)
+  ),
+  tar_target(
+    attrition_ft,
+    as_attrition_table(cohortflow_obj, backend = "flextable")
+  ),
+  
+  # Calculate DAOH
+  tar_target(
+    hospitalisation_dt,
+    generate_hospitalisation_dt(
+      moh_nmds_event_dt,
+      moh_cohort_dt)
+  ),
+  tar_target(
+    daoh_dt,
+    generate_daoh_dt(
+      index_event_dt = index_event_dt,
+      moh_patient_dt = moh_cohort_dt,
+      hospitalisation_dt,
+      daoh_limits
+    )
+  ), 
+  # Calculate mortality.
+  tar_target(
+    mortality_dt,
+    daoh_dt[,.(
+      index_event_id,
+      mort.30.day = !is.na(DOD) & (as.numeric(interval(daoh_period_start, DOD)/days(1)) <= 30),
+      mort.90.day = !is.na(DOD) & (as.numeric(interval(daoh_period_start, DOD)/days(1)) <= 90)
+    )]),
+  
+  tar_target(
+    analysis_dt,
+    generate_analysis_dt(
+      eligible_event_dt = as.data.table(cohort(cohortflow_obj))[,.(pms_unique_identifier)],
+      index_event_dt, 
+      ed_event_dt,
+      moh_cohort_dt,
+      mortality_dt,
+      daoh_dt,
+      priority_ethnicity_lookup_dt,
+      audit_diags_lookup_dt
+    )
+  ),
+  
   
   tar_target(
     overall_summary_gt,
@@ -460,15 +610,6 @@ tar_plan(
       )
     ) %>% add_overall()
   ),
-  
-  tar_target(
-    export_to_redcap_result_list,
-    export_to_redcap(
-      redcap_export_dt,
-      nhi_decryption_fn
-    )
-  )
-  
   
   
 )

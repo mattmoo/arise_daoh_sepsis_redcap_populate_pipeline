@@ -13,6 +13,8 @@ load_adhb_sepsis_cohort_raw_dt <- function(adhb_sepsis_lactate_xlsx_file_path,
                                            xlsx_pwd,
                                            nhi_encryption_fn,
                                            ...) {
+  # print(keyring::key_get("TEST", keyring = 'arise'))
+  
   # options(java.parameters = c("-XX:+UseConcMarkSweepGC", "-Xmx16192m"))
   # gc()
   # print(1)
