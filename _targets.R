@@ -36,10 +36,11 @@ package_list = c(
   "httr2",
   "keyring",
   "flextable",
-  
+  "writexl",
   "cohortflow",
   "healthcodingnz",
-  "daohtools"
+  "daohtools",
+  "forcats"
   # "xlsx"
 )
 new.packages <- package_list[!(package_list %in% installed.packages()[,"Package"])]
@@ -68,7 +69,7 @@ tar_plan(
   ),
   tar_target(
     daoh_limits,
-    c(0,90)
+    c(0,89)
   ),
   tar_target(
     global_initialisation_vector_raw,
@@ -87,16 +88,97 @@ tar_plan(
   
   tar_target(
     label_list,
-    c(
-      list(
-        mort30 = 'Mortality (30-day)',
-        mort90 = 'Mortality (90-day)',
-        age_years = 'Age (years)',
-        gender = 'Gender',
-        priority.ethnicity.desc.L1 = 'Ethnicity (L1, Priority)',
-        priority.ethnicity.desc.L2 = 'Ethnicity (L2, Priority)'
-      ),
-      setNames(as.list(redcap_metadata_dt$field_name), redcap_metadata_dt$field_label)
+    list(
+      # identifiers
+      pms_unique_identifier          = "PMS unique identifier",
+      PRIM_HCU                       = "Encrypted NHI",
+      index_event_id                 = "Index event ID",
+      record_id                      = "Record ID",
+      nmds_event_id                  = "NMDS event ID",
+      nnpac_event_id                 = "NNPAC event ID",
+      
+      # cohort
+      icd_code                       = "ICD code",
+      arise_eligible                 = "ARISE eligible",
+      
+      # demographics
+      age_years                      = "Age (years)",
+      gender                         = "Gender",
+      ethnicity_priority             = "Ethnicity (priority)",
+      priority.ethnicity.code.L1     = "Ethnicity (L1, priority) code",
+      priority.ethnicity.desc.L1     = "Ethnicity (L1, priority)",
+      priority.ethnicity.desc.L2     = "Ethnicity (L2, priority)",
+      DOM                            = "Domicile code",
+      nzdep_decile                   = "NZDep2023 decile",
+      nzdep2023_decile               = "NZDep2023 decile",
+      nzdep2023                      = "NZDep2023 decile",
+      nzdep2023_quintile             = "NZDep2023 quintile",
+      
+      # hospital event
+      admit_datetime                 = "Hospital admission date/time",
+      discharge_datetime             = "Hospital discharge date/time",
+      ed_discharge_datetime          = "Hospital discharge date/time (ED extract)",
+      
+      # ED presentation
+      ed_presentation_datetime       = "ED arrival date/time",
+      ed_presentation_date           = "ED arrival date",
+      ed_triage_datetime             = "ED triage date/time",
+      snomed_cpc                     = "SNOMED chief presenting complaint",
+      triage_category                = "Triage category",
+      
+      # severity
+      m3_score = "M3",
+      news                           = "National Early Warning Score (NEWS)",
+      highest_ews                    = "Highest EWS in ED",
+      time_highest_ews               = "Time of highest EWS",
+      first_sbp                      = "First systolic blood pressure",
+      first_dbp                      = "First diastolic blood pressure",
+      lowest_sbp                     = "Lowest systolic blood pressure",
+      first_heart_rate               = "First heart rate in ED",
+      first_resp_rate                = "First respiratory rate in ED",
+      first_temperature              = "First temperature in ED",
+      first_spo2                     = "First SpO2 in ED",
+      first_spo2_on_oxygen           = "First SpO2 recorded on oxygen",
+      first_avpu                     = "First AVPU in ED",
+      first_gcs                      = "First Glasgow Coma Scale in ED",
+      first_lactate                  = "First lactate in ED",
+      highest_lactate_6h_reading     = "Highest lactate within 6 hours",
+      
+      # infection
+      infection_desc                 = "Infection description",
+      primary_infection_site         = "Primary site of infection",
+      primary_growth_species         = "Primary growth cultured",
+      primary_growth_spec_other      = "Primary growth cultured (specify)",
+      
+      # treatments
+      iv_fluids_vol_before           = "IV fluids before arrival (ml)",
+      iv_fluids_vol_ed               = "IV fluids in ED (ml)",
+      first_antibiotic_datetime      = "First antibiotic administration date/time",
+      first_antibiotic               = "First antibiotic administered",
+      first_antibiotic_grp           = "First antibiotic administered",
+      first_antibiotic_roa           = "First antibiotic route of administration",
+      first_antibiotics_appropriate  = "First antibiotics were appropriate",
+      first_appropriate_abx_datetime = "First appropriate antibiotic date/time",
+      time_to_first_abx              = "Minutes to first antibiotics",
+      time_to_first_approp_abx       = "Minutes to first appropriate antibiotics",
+      primary_vasopressor_bolus      = "Vasopressor IV bolus product",
+      primary_vasopressor_infusion   = "Vasopressor IV infusion product",
+      primary_vasopressor_roa        = "Vasopressor route of administration",
+      
+      # outcomes
+      ed_disposition                 = "ED disposition",
+      nmds_event_end_type            = "NMDS event end type",
+      nnpac_event_end_type           = "NNPAC event end type",
+      DOD                            = "Date of death",
+      mort_in_hospital               = "Mortality (In-hospital)",
+      mort.30.day                    = "Mortality (30-day)",
+      mort.90.day                    = "Mortality (90-day)",
+      daoh_period_start              = "DAOH period start",
+      daoh_period_end                = "DAOH period end",
+      dih                            = "Days in hospital",
+      dd                             = "Days dead",
+      daoh                           = "Days alive and out of hospital (90)",
+      daoh_jittered                  = "DAOH90 (jittered)"
     )
   ),
   
@@ -109,6 +191,11 @@ tar_plan(
   tar_target(
     lookup_directory_path,
     '//files.auckland.ac.nz/research/resmed202400055-daoh-sepsis-data/data/lookup'
+    # 'data/lookup'
+  ),
+  tar_target(
+    output_directory_path,
+    '//files.auckland.ac.nz/research/resmed202400055-daoh-sepsis-data/output'
     # 'data/lookup'
   ),
   tar_target(
@@ -198,6 +285,10 @@ tar_plan(
     file.path(lookup_directory_path, "health_specialty_code_table_july_2020.xls"),
   ),
   tar_target(
+    nzdep2023_dom_lookup_txt_path,
+    file.path(lookup_directory_path, "NZDep2023_WgtAvDom-text.txt"),
+  ),
+  tar_target(
     priority_ethnicity_lookup_dt,
     generate_priority_ethnicity_lookup_dt(
       ethnicity_lookup_data_path
@@ -230,6 +321,10 @@ tar_plan(
       HLTHSPEC = factor(`Health Specialty Code`),
       HLTHSPEC_DESC = factor(Description)
     )],
+  ),
+  tar_target(
+    nzdep2023_dom_lookup_dt,
+    data.table::fread(nzdep2023_dom_lookup_txt_path)
   ),
   
   tar_target(
@@ -348,7 +443,8 @@ tar_plan(
     moh_cohort_dt,
     clean_moh_cohort_dt(
       moh_cohort_raw_dt,
-      priority_ethnicity_lookup_dt
+      priority_ethnicity_lookup_dt,
+      nzdep2023_dom_lookup_dt
     ),
     format = 'fst_dt'
   ),
@@ -445,6 +541,13 @@ tar_plan(
       audit_diags_lookup_dt
     )
   ),
+  
+  tar_target(
+    comorbidity_score_dt,
+    generate_comorbidity_score_dt(
+      diag.dt = moh_nmds_diag_dt
+    )
+  ),
 
   # Don't uncomment this!
   # Was used to export to REDCap
@@ -500,8 +603,9 @@ tar_plan(
   ),
   
   # Cohortflow
+  # Criteria to be assessed for ARISE.
   tar_target(
-    criteria_obj,
+    initial_criteria_obj,
     cf_criteria() |>
       exclude(~ not_transfer == FALSE, label = "Transfer",  category = "Pre-screen") |>
       exclude(~ has_lactate == FALSE, label = "No lactate recorded",  category = "Pre-screen") |>
@@ -509,15 +613,21 @@ tar_plan(
       exclude(~ infection_code == FALSE, label = "Admission has no infection diagnostic code",  category = "Pre-screen") |>
       exclude(~ infection_code_first_two == FALSE, label = "Infection code is not primary or secondary",  category = "Pre-screen") |>
       
-      exclude(~ infection == 'Transfer', label = "Hospital transfer", category = "Records screen") |>
+      exclude(~ infection %ilike% 'Transfer', label = "Hospital transfer", category = "Records screen") |>
       exclude(~ infection == 'Not ED Visit', label = "Not ED visit", category = "Records screen") |>
       exclude(~ is.na(infection) | infection == 'Not Available' | infection == 'Not recorded', label = "Suspected infection unknown", category = "Records screen") |>
       exclude(~ infection == 'Not Infection', label = "No suspected infection", category = "Records screen") |>
       exclude(~ bp90_fluid_6hr == 'No', label = "BP>=90mmHg after 1L fluid", category = "Records screen") |>
-      exclude(~ first_lactate_result <= 2, label = "First Lactate <= 2mmol/L", category = "Records screen") |>
+      exclude(~ first_lactate_result <= 2, label = "First Lactate <= 2mmol/L", category = "Records screen")
+  ),
+  # Additional criteria for ARISE.
+  tar_target(
+    arise_criteria_obj,
+    initial_criteria_obj |>
       
-      exclude(~ is.na(arise_exclusion), label = "REDCap missing", category = "ARISE criteria") |>
+      # exclude(~ is.na(arise_exclusion), label = "REDCap exclusion missing", category = "ARISE criteria") |>
       exclude(~ arise_exclusion == 'Hypotension not due to sepsis', label = "Hypotension not due to sepsis", category = "ARISE criteria") |>
+      exclude(~ arise_exclusion == 'Requirement for immediate surgery', label = "Requirement for immediate surgery", category = "ARISE criteria") |>
       exclude(~ arise_exclusion == 'Severe CHF/ESRF/other comorbidity precluding fluids or vasopressor', label = "Comorbidity precluding fluids or vasopressor", category = "ARISE criteria") |>
       exclude(~ arise_exclusion == 'DKA/severe gastro needing high fluid volumes', label = "DKA/severe gastro needing high fluid volumes", category = "ARISE criteria") |>
       exclude(~ arise_exclusion == 'Ceiling of care not for ICU', label = "Ceiling of care not for ICU", category = "ARISE criteria") |>
@@ -526,10 +636,17 @@ tar_plan(
   ),
   
   tar_target(
+    initial_cohortflow_obj,
+    apply_criteria(
+      eligibility_dt, 
+      initial_criteria_obj)
+  ),
+  
+  tar_target(
     cohortflow_obj,
     apply_criteria(
       eligibility_dt, 
-      criteria_obj)
+      arise_criteria_obj)
   ),
   
   tar_target(
@@ -569,14 +686,18 @@ tar_plan(
   tar_target(
     analysis_dt,
     generate_analysis_dt(
-      eligible_event_dt = as.data.table(cohort(cohortflow_obj))[,.(pms_unique_identifier)],
+      eligible_event_dt = as.data.table(cohort(initial_cohortflow_obj))[,.(pms_unique_identifier)],
+      arise_eligible_event_dt = as.data.table(cohort(cohortflow_obj))[,.(pms_unique_identifier)],
       index_event_dt, 
       ed_event_dt,
       moh_cohort_dt,
+      moh_nmds_event_dt,
       mortality_dt,
       daoh_dt,
       priority_ethnicity_lookup_dt,
-      audit_diags_lookup_dt
+      audit_diags_lookup_dt,
+      redcap_data_dt,
+      comorbidity_score_dt[map == 'm3', .(EVENT_ID, m3_score = score)]
     )
   ),
   
@@ -610,6 +731,408 @@ tar_plan(
       )
     ) %>% add_overall()
   ),
+  
+  tar_target(
+    table1_gt,
+    
+    analysis_dt[, .(
+      age_years,
+      gender,
+      priority.ethnicity.desc.L1,
+      nzdep_decile = as.numeric(as.character(nzdep2023)),
+      m3_score,
+      first_lactate,
+      first_sbp,
+      news,
+      primary_infection_site,
+      primary_growth_species,
+      arise_eligible
+    )] |> 
+      tbl_summary(
+        by = arise_eligible,
+        label = label_list,
+        type = list(nzdep_decile ~ "continuous"),
+        statistic = list(
+          all_continuous()  ~ "{mean} ({sd})",
+          news      ~ "{median} [{p25}, {p75}]",
+          nzdep_decile      ~ "{median} [{p25}, {p75}]",
+          first_lactate     ~ "{median} [{p25}, {p75}]",
+          m3_score     ~ "{median} [{p25}, {p75}]",
+          all_categorical() ~ "{n} ({p}%)"
+        ),
+        digits = list(
+          age_years     ~ 1,
+          nzdep_decile  ~ 0,
+          first_lactate ~ 1,
+          first_sbp     ~ 0
+        ),
+        missing = "ifany",
+        missing_text = "Missing"
+      ) |>
+      add_n() |>
+      add_p(
+        test = list(
+          all_continuous()  ~ "wilcox.test",
+          all_categorical() ~ "fisher.test"
+        ),
+        pvalue_fun = \(x) style_pvalue(x, digits = 3)
+      ) |>
+      add_overall(last = TRUE, col_label = "**Total**  \nN = {N}") |>
+      modify_header(all_stat_cols(FALSE) ~ "**{level}**  \nN = {n}") |>
+      modify_spanning_header(all_stat_cols(FALSE) ~ paste0("**", label_list$arise_eligible, "**")) |>
+      bold_labels()
+  ),
+  
+  tar_target(
+    table1_ethnicity_gt,
+    
+    analysis_dt[, .(
+      age_years,
+      gender,
+      nzdep_decile = as.numeric(as.character(nzdep2023)),
+      first_lactate,
+      first_sbp,
+      m3_score,
+      news,
+      primary_infection_site,
+      primary_growth_species,
+      arise_eligible,
+      priority.ethnicity.desc.L1
+    )] |>
+      tbl_summary(
+        by = priority.ethnicity.desc.L1,
+        label = label_list,
+        type = list(nzdep_decile ~ "continuous"),
+        statistic = list(
+          all_continuous()  ~ "{mean} ({sd})",
+          news      ~ "{median} [{p25}, {p75}]",
+          nzdep_decile      ~ "{median} [{p25}, {p75}]",
+          first_lactate     ~ "{median} [{p25}, {p75}]",
+          m3_score     ~ "{median} [{p25}, {p75}]",
+          all_categorical() ~ "{n} ({p}%)"
+        ),
+        digits = list(
+          age_years     ~ 1,
+          nzdep_decile  ~ 0,
+          first_lactate ~ 1,
+          first_sbp     ~ 0
+        ),
+        missing = "ifany",
+        missing_text = "Missing"
+      ) |>
+      add_n() |>
+      add_p(
+        test = list(
+          all_continuous()  ~ "kruskal.test",
+          all_categorical() ~ "fisher.test"
+        ),
+        pvalue_fun = \(x) style_pvalue(x, digits = 3)
+      ) |>
+      add_overall(last = TRUE, col_label = "**Total**  \nN = {N}") |>
+      modify_header(all_stat_cols(FALSE) ~ "**{level}**  \nN = {n}") |>
+      modify_spanning_header(all_stat_cols(FALSE) ~ paste0("**", label_list$arise_eligible, "**")) |>
+      bold_labels()
+  ),
+  
+  
+  # DAOH bootstrapping
+  tar_target(boot_R,    10000L),
+  tar_target(boot_conf, 0.95),
+  tar_target(daoh_boot_strata_vec, c("arise_eligible", "priority.ethnicity.desc.L1")),
+  
+  tar_target(
+    daoh_boot_dt,
+    groupingsets(
+      analysis_dt[!is.na(daoh)],
+      j = boot_daoh(daoh, R = boot_R, conf = boot_conf),
+      by = daoh_boot_strata_vec,
+      sets = c(list(character(0)), as.list(daoh_boot_strata_vec))
+    )
+  ),
+  
+  # Draw nice tables of bootstrapped stats
+  tar_target(daoh_boot_strata_all, daoh_boot_strata_vec),
+  tar_target(
+    daoh_boot_ft_list,
+    list(
+      daoh_boot_stratum = daoh_boot_strata_vec,
+      daoh_boot_table = draw_daoh_boot_table(
+        boot_dt     = daoh_boot_dt,
+        stratum_var = daoh_boot_strata_vec,
+        by_vars     = daoh_boot_strata_all,
+        labels      = label_list
+      )
+    ),
+    pattern = map(daoh_boot_strata_vec),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    table2_gt,
+    analysis_dt[, c(  "time_to_first_abx",
+                                "first_antibiotic_grp",
+                                "first_antibiotics_appropriate",
+                                "iv_fluids_vol_before",
+                                "iv_fluids_vol_ed",
+                                "primary_vasopressor_bolus",
+                                "primary_vasopressor_infusion", 
+                                "arise_eligible"), with = FALSE] |>
+      tbl_summary(
+        by = arise_eligible,
+        label = label_list,
+        statistic = list(
+          all_continuous()  ~ "{mean} ({sd})",
+          all_categorical() ~ "{n} ({p}%)"
+        ),
+        digits = all_continuous() ~ 0,
+        missing = "ifany",
+        missing_text = "Missing"
+      ) |>
+      add_n() |>
+      add_p(
+        test = list(
+          all_continuous()  ~ "wilcox.test",
+          all_categorical() ~ "fisher.test"
+        ),
+        test.args = first_antibiotic_grp ~ list(simulate.p.value = TRUE, B = 1e5),
+        pvalue_fun = \(x) style_pvalue(x, digits = 3)
+      ) |>
+      add_overall(last = TRUE, col_label = "**Total**  \nN = {N}") |>
+      modify_header(all_stat_cols(FALSE) ~ "**{level}**  \nN = {n}") |>
+      modify_spanning_header(all_stat_cols(FALSE) ~ paste0("**", label_list$arise_eligible, "**")) |>
+      bold_labels()
+  ),
+  
+  tar_target(
+    table3_gt,
+    analysis_dt[, .(
+      # nmds_event_end_type,
+      ed_disposition,
+      mort_in_hospital,
+      mort.30.day,
+      mort.90.day,
+      daoh,
+      arise_eligible
+    )] |>
+      tbl_summary(
+        by = arise_eligible,
+        label = c(label_list,
+                  list(died_in_hospital = "Died in hospital (index event)")),
+        statistic = list(
+          all_continuous()  ~ "{median} [{p25}, {p75}]",
+          all_categorical() ~ "{n} ({p}%)"
+        ),
+        digits = daoh ~ 1,
+        missing = "ifany",
+        missing_text = "Missing"
+      ) |>
+      add_n() |>
+      add_p(
+        test = list(
+          all_continuous()  ~ "wilcox.test",
+          all_categorical() ~ "fisher.test"
+        ),
+        pvalue_fun = \(x) style_pvalue(x, digits = 3)
+      ) |>
+      add_overall(last = TRUE, col_label = "**Total**  \nN = {N}") |>
+      modify_header(all_stat_cols(FALSE) ~ "**{level}**  \nN = {n}") |>
+      modify_spanning_header(all_stat_cols(FALSE) ~ paste0("**", label_list$arise_eligible, "**")) |>
+      bold_labels()
+  ),
+  
+  tar_target(
+    table3_ethnicity_gt,
+    analysis_dt[, .(
+      mort_in_hospital,
+      mort.30.day,
+      mort.90.day,
+      daoh,
+      priority.ethnicity.desc.L1
+    )] |>
+      tbl_summary(
+        by = priority.ethnicity.desc.L1,
+        label = c(label_list,
+                  list(mort_in_hospital = "Died in hospital (index event)")),
+        statistic = list(
+          all_continuous()  ~ "{median} [{p25}, {p75}]",
+          all_categorical() ~ "{n} ({p}%)"
+        ),
+        digits = daoh ~ 1,
+        missing = "ifany",
+        missing_text = "Missing"
+      ) |>
+      add_n() |>
+      add_p(
+        test = list(
+          all_continuous()  ~ "kruskal.test",
+          all_categorical() ~ "fisher.test"
+        ),
+        test.args = all_categorical() ~ list(simulate.p.value = TRUE, B = 1e5),
+        pvalue_fun = \(x) style_pvalue(x, digits = 3)
+      ) |>
+      add_overall(last = TRUE, col_label = "**Total**  \nN = {N}") |>
+      modify_header(all_stat_cols(FALSE) ~ "**{level}**  \nN = {n}") |>
+      modify_spanning_header(all_stat_cols(FALSE) ~
+                               paste0("**", label_list$priority.ethnicity.desc.L1, "**")) |>
+      bold_labels()
+  ),
+  
+  tar_target(
+    table3_arise_ethnicity_gt,
+    analysis_dt[arise_eligible == 'Yes', .(
+      mort_in_hospital,
+      mort.30.day,
+      mort.90.day,
+      daoh,
+      priority.ethnicity.desc.L1
+    )] |>
+      tbl_summary(
+        by = priority.ethnicity.desc.L1,
+        label = c(label_list,
+                  list(mort_in_hospital = "Died in hospital (index event)")),
+        statistic = list(
+          all_continuous()  ~ "{median} [{p25}, {p75}]",
+          all_categorical() ~ "{n} ({p}%)"
+        ),
+        digits = daoh ~ 1,
+        missing = "ifany",
+        missing_text = "Missing"
+      ) |>
+      add_n() |>
+      add_p(
+        test = list(
+          all_continuous()  ~ "kruskal.test",
+          all_categorical() ~ "fisher.test"
+        ),
+        test.args = all_categorical() ~ list(simulate.p.value = TRUE, B = 1e5),
+        pvalue_fun = \(x) style_pvalue(x, digits = 3)
+      ) |>
+      add_overall(last = TRUE, col_label = "**Total**  \nN = {N}") |>
+      modify_header(all_stat_cols(FALSE) ~ "**{level}**  \nN = {n}") |>
+      modify_spanning_header(all_stat_cols(FALSE) ~
+                               paste0("**", label_list$priority.ethnicity.desc.L1, "**")) |>
+      bold_labels()
+  ),
+  
+  # Output files
+  tar_target(
+    table_output_directory_path,
+    file.path(output_directory_path, 'tables')
+  ),
+  
+  tar_target(
+    tbl1_table_docx_file,
+    write_table(
+      table    = table1_gt,
+      filename = "table1_demographics.docx",
+      path     = table_output_directory_path,
+      caption  = "Table 1. Baseline demographics"
+    ),
+    format = "file"
+  ),
+  
+  tar_target(
+    tbl1_ethnicity_table_docx_file,
+    write_table(
+      table    = table1_ethnicity_gt,
+      filename = "table1_demographics_by_ethnicity.docx",
+      path     = table_output_directory_path,
+      caption  = "Table 1. Baseline demographics by Ethnicity"
+    ),
+    format = "file"
+  ),
+  
+  tar_target(
+    tbl2_table_docx_file,
+    write_table(
+      table    = table2_gt,
+      filename = "table2_treatments.docx",
+      path     = table_output_directory_path,
+      caption  = "Table 2. Treatments"
+    ),
+    format = "file"
+  ),
+  
+  tar_target(
+    tbl3_table_docx_file,
+    write_table(
+      table    = table3_gt,
+      filename = "table3_outcomes.docx",
+      path     = table_output_directory_path,
+      caption  = "Table 3. Outcomes by ARISE eligibility"
+    ),
+    format = "file"
+  ),
+  
+  tar_target(
+    tbl3_ethnicity_table_docx_file,
+    write_table(
+      table    = table3_ethnicity_gt,
+      filename = "table3_outcomes_ethnicity.docx",
+      path     = table_output_directory_path,
+      caption  = "Table 3b. Outcomes by prioritised ethnicity"
+    ),
+    format = "file"
+  ),
+  
+  tar_target(
+    tbl3_arise_ethnicity_table_docx_file,
+    write_table(
+      table    = table3_arise_ethnicity_gt,
+      filename = "table3_outcomes_arise_ethnicity.docx",
+      path     = table_output_directory_path,
+      caption  = "Table 3b. Outcomes for ARISE eligible by prioritised ethnicity"
+    ),
+    format = "file"
+  ),
+  
+  
+  tar_target(
+    daoh_boot_table_docx_file,
+    write_table(
+      table    = daoh_boot_ft_list$daoh_boot_table$flextable,
+      filename = paste0("daoh_boot_", daoh_boot_ft_list$daoh_boot_stratum, ".docx"),
+      path     = table_output_directory_path,
+      caption  = paste0("Days alive and out of hospital to 90 days, by ",
+                        tolower(daoh_boot_ft_list$daoh_boot_table$label))
+    ),
+    pattern = map(daoh_boot_ft_list),
+    format = "file"
+  ),
+  
+  tar_target(
+    attrition_table_docx_file,
+    write_table(
+      table    = attrition_ft,
+      filename = "eligibility_criteria.docx",
+      path     = table_output_directory_path
+    ),
+    format = "file"
+  ),
+  
+  tar_target(
+    arise_sepsis_xlsx_file,
+    {
+      stamp <- format(Sys.time(), "%Y%m%d-%H%M")
+      hash  <- substr(digest::digest(analysis_dt), 1, 8)
+      path  <- file.path(output_directory_path,
+                         sprintf("arise_sepsis_%s_%s.xlsx", stamp, hash))
+      writexl::write_xlsx(analysis_dt, path = path)
+      path
+    }
+  ),
+  
+  tar_target(
+    arise_sepsis_eligibility_xlsx_file,
+    {
+      stamp <- format(Sys.time(), "%Y%m%d-%H%M")
+      hash  <- substr(digest::digest(analysis_dt), 1, 8)
+      path  <- file.path(output_directory_path,
+                         sprintf("arise_sepsis_eligibility_%s_%s.xlsx", stamp, hash))
+      writexl::write_xlsx(eligibility_dt, path = path)
+      path
+    }
+  )
   
   
 )

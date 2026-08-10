@@ -7,7 +7,7 @@
 #' @return
 #' @author Matthew Moore
 #' @export
-clean_moh_cohort_dt <- function(moh_cohort_raw_dt, priority_ethnicity_lookup_dt) {
+clean_moh_cohort_dt <- function(moh_cohort_raw_dt, priority_ethnicity_lookup_dt, nzdep2023_dom_lookup_dt) {
 
   moh_cohort_dt = unique(moh_cohort_raw_dt)
   
@@ -29,6 +29,13 @@ clean_moh_cohort_dt <- function(moh_cohort_raw_dt, priority_ethnicity_lookup_dt)
     by.y = "priority.ethnicity.code.L2",
     all.x = TRUE
   )
+  
+  moh_cohort_dt = merge(moh_cohort_dt,
+        nzdep2023_dom_lookup_dt[, .(DOM = sprintf(fmt = '%04g', Domicile_code),
+                                    AU2017_name,
+                                    Dom_average_NZDep2023)],
+        all.x = TRUE,
+        by = 'DOM')
   
   setcolorder(moh_cohort_dt,
               c(

@@ -4,3 +4,4 @@ library(dotenv)
 library(targets)
 library(tarchetypes)
 
+pak::pak('mattmoo/comorbidity@m3')

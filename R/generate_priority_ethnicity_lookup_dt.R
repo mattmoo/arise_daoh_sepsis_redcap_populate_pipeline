@@ -24,10 +24,10 @@ generate_priority_ethnicity_lookup_dt <- function(ethnicity_lookup_data_path) {
         "Māori",
         "Pacific Peoples",
         "Asian",
-        "European",
-        "Other ethnicity",
-        "Other ethnicity",
-        "Other ethnicity"
+        "European/Other",
+        "European/Other",
+        "European/Other",
+        "European/Other"
       )
     ),
     priority.ethnicity.desc.L2 = factor(desc.L2)
