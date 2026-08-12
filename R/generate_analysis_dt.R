@@ -113,7 +113,7 @@ generate_analysis_dt <- function(eligible_event_dt,
   
   analysis_dt = merge(
     analysis_dt,
-    comorbidity_score_dt,
+    comorbidity_score_dt[, .(EVENT_ID, m3_score = score)],
     by.x = 'nmds_event_id',
     by.y = 'EVENT_ID',
     all.x = TRUE
@@ -170,8 +170,10 @@ generate_analysis_dt <- function(eligible_event_dt,
   
   analysis_dt[, age_years := round(as.numeric(difftime(ed_presentation_datetime, date_of_birth, unit = 'days'))/365.25)]
   analysis_dt[, date_of_birth := NULL]
-  analysis_dt[, nzdep2023_quintile := factor(ceiling(nzdep2023/2), levels = 1:5)]
-  analysis_dt[, nzdep2023 := factor(ceiling(nzdep2023), levels = 1:10)]
+  analysis_dt[, nzdep2023_int := as.integer(nzdep2023)]
+  analysis_dt[, nzdep2023_quintile_int := as.integer(ceiling(nzdep2023/2))]
+  analysis_dt[, nzdep2023 := factor(nzdep2023_int, levels = 1:10)]
+  analysis_dt[, nzdep2023_quintile := factor(nzdep2023_quintile_int, levels = 1:5)]
 
   
   analysis_dt[, gender := factor(gender, levels = c('F', 'M', 'U'), labels = c('Female', 'Male', 'Unknown'))]
@@ -188,7 +190,8 @@ generate_analysis_dt <- function(eligible_event_dt,
     demographics = c("age_years", "gender",
                      "ethnicity_priority", "priority.ethnicity.code.L1",
                      "priority.ethnicity.desc.L1", "priority.ethnicity.desc.L2", 'nzdep2023',
-                     'nzdep2023_quintile'),
+                     'nzdep2023_quintile', 'nzdep2023_int',
+                     'nzdep2023_quintile_int'),
     
     ed_timing = c(
       "ed_presentation_datetime",

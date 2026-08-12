@@ -5,7 +5,7 @@ daoh_stats <- function(x) {
     q10 = q[1], q25 = q[2], median = q[3], q75 = q[4], q90 = q[5])
 }
 
-boot_daoh <- function(x, R = 10000, conf = 0.95) {
+boot_daoh <- function(x, R = 10000, conf = 0.95, min_n = 20L) {
   x <- x[!is.na(x)]
   
   out_template <- data.table::data.table(
@@ -13,19 +13,20 @@ boot_daoh <- function(x, R = 10000, conf = 0.95) {
     lower = numeric(), upper = numeric(), estimable = logical()
   )
   
-  # groupingsets evaluates j once on a zero-row table to build a
-  # column template; return the empty structure rather than erroring
   if (length(x) == 0L) return(out_template)
   
-  if (length(x) < 20L)
-    stop("boot_daoh: n = ", length(x), " after NA removal")
+  # Too few to bootstrap: report point estimates, no intervals
+  if (length(x) < min_n) {
+    est <- daoh_stats(x)
+    return(data.table::data.table(
+      statistic = names(est), n = length(x), estimate = as.numeric(est),
+      lower = NA_real_, upper = NA_real_, estimable = FALSE))
+  }
   
   bo <- boot::boot(x, \(d, i) daoh_stats(d[i]), R = R)
   
   data.table::rbindlist(lapply(seq_along(bo$t0), function(j) {
     est <- bo$t0[j]
-    
-    # BCa bias correction is qnorm(p); infinite when p is 0 or 1
     p <- mean(bo$t[, j] < est)
     if (p <= 0 || p >= 1)
       return(data.table::data.table(

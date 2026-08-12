@@ -1,11 +1,10 @@
 tar_make(names = c(
-  tbl1_table_docx_file,
-  tbl1_ethnicity_table_docx_file,
-  tbl2_table_docx_file,
-  tbl3_table_docx_file,
-  tbl3_ethnicity_table_docx_file,
-  tbl3_arise_ethnicity_table_docx_file,
-  daoh_boot_table_docx_file,
+  table_demographics_docx_file_list,
+  table_severity_docx_file_list,
+  table_infection_docx_file_list,
+  table_treatment_docx_file_list,
+  table_outcome_docx_file_list,
+  daoh_boot_docx_file_list,
   attrition_table_docx_file,
   
   arise_sepsis_eligibility_xlsx_file,
