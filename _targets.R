@@ -40,7 +40,9 @@ package_list = c(
   "cohortflow",
   "healthcodingnz",
   "daohtools",
-  "forcats"
+  "forcats",
+  "scales",
+  "RColorBrewer"
   # "xlsx"
 )
 new.packages <- package_list[!(package_list %in% installed.packages()[,"Package"])]
@@ -988,8 +990,6 @@ tar_plan(
     format = "file"
   ),
   
-  
-  
   # ---- DAOH bootstrap, branched over the same specs ------------------------
 
   
@@ -1029,6 +1029,402 @@ tar_plan(
     write_summary_table_list(daoh_boot_ft_list,
                              table_output_directory_path, label_list),
     pattern = map(daoh_boot_ft_list),
+    format = "file"
+  ),
+  
+  # ==========================================================================
+  # Summary plots
+  #
+  # Branched over the same population x stratification grid as the tables
+  # (table_spec_dt / table_spec_data_list). Continuous and categorical
+  # variables are separate families: boxplots and proportion bars cannot
+  # share a panel grid.
+  #
+  # Output: <output>/plots/<population_slug>/<family>_by_<by_slug>.pdf
+  # 6 inches wide for A4; height returned by the build function, capped at 9.5.
+  # ==========================================================================
+  
+  # ---- output settings ------------------------------------------------------
+  tar_target(plot_width_in,   6),
+  tar_target(plot_device_ext, "pdf"),
+  tar_target(plot_palette,    "Set2"),
+  
+  tar_target(
+    plot_output_directory_path,
+    file.path(output_directory_path, "plots")
+  ),
+  
+  # ---- reusable themes and scales ------------------------------------------
+  # Continuous plots need x-label rotation when there are many groups, so the
+  # theme is branched. Categorical plots have a continuous x axis, so one
+  # unbranched theme serves all of them.
+  tar_target(
+    plot_group_n_list,
+    uniqueN(na.omit(table_spec_data_list[[table_spec_dt$by_var]])),
+    pattern = map(table_spec_dt, table_spec_data_list)
+  ),
+  
+  tar_target(
+    plot_theme_continuous_list,
+    summary_plot_theme(n_groups = plot_group_n_list, legend = FALSE),
+    pattern = map(plot_group_n_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    plot_theme_categorical,
+    summary_plot_theme(legend = TRUE)
+  ),
+  
+  tar_target(
+    plot_fill_scale_list,
+    summary_plot_fill_scale(table_spec_dt$by_var, label_list, plot_palette),
+    pattern = map(table_spec_dt),
+    iteration = "list"
+  ),
+  
+  tar_target(plot_percent_scale, summary_plot_percent_scale()),
+  
+  tar_target(
+    plot_scales_categorical_list,
+    list(plot_percent_scale, plot_fill_scale_list),
+    pattern = map(plot_fill_scale_list),
+    iteration = "list"
+  ),
+  
+  # ---- variable sets --------------------------------------------------------
+  tar_target(plot_demographics_continuous_vars,
+             c("age_years", "nzdep_decile", "m3_score")),
+  
+  tar_target(plot_demographics_categorical_vars,
+             c("gender", "priority.ethnicity.desc.L1", "arise_eligible")),
+  
+  tar_target(plot_severity_continuous_vars,
+             c("news", "first_lactate", "first_sbp", "first_heart_rate",
+               "first_resp_rate", "first_temperature")),
+  
+  tar_target(plot_severity_categorical_vars,
+             c("triage_category", "first_avpu", "first_spo2_on_oxygen")),
+  
+  tar_target(plot_infection_vars,
+             c("primary_infection_site", "primary_growth_species")),
+  
+  tar_target(plot_treatment_continuous_vars,
+             c("time_to_first_abx", "iv_fluids_vol_before", "iv_fluids_vol_ed")),
+  
+  tar_target(plot_treatment_categorical_vars,
+             c("first_antibiotic_grp", "first_antibiotics_appropriate",
+               "primary_vasopressor_bolus", "primary_vasopressor_infusion")),
+  
+  tar_target(plot_outcome_vars,
+             c("ed_disposition", "mort_in_hospital", "mort.30.day",
+               "mort.90.day")),
+  
+  # ==========================================================================
+  # 1. Demographics
+  # ==========================================================================
+  tar_target(
+    plot_demographics_continuous_list,
+    c(list(plot_family     = "demographics_continuous",
+           population_slug = table_spec_dt$population_slug,
+           by_var          = table_spec_dt$by_var,
+           by_slug         = table_spec_dt$by_slug),
+      build_continuous_summary_plot(
+        dt     = table_spec_data_list,
+        vars   = plot_demographics_continuous_vars,
+        by_var = table_spec_dt$by_var,
+        labels = label_list)),
+    pattern = map(table_spec_dt, table_spec_data_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    plot_demographics_continuous_pdf_file_list,
+    write_summary_plot_list(
+      plot_list  = plot_demographics_continuous_list,
+      path       = plot_output_directory_path,
+      width_in   = plot_width_in,
+      plot_theme = plot_theme_continuous_list,
+      device_ext = plot_device_ext),
+    pattern = map(plot_demographics_continuous_list,
+                  plot_theme_continuous_list),
+    format = "file"
+  ),
+  
+  tar_target(
+    plot_demographics_categorical_list,
+    c(list(plot_family     = "demographics_categorical",
+           population_slug = table_spec_dt$population_slug,
+           by_var          = table_spec_dt$by_var,
+           by_slug         = table_spec_dt$by_slug),
+      build_categorical_summary_plot(
+        dt     = table_spec_data_list,
+        vars   = setdiff(plot_demographics_categorical_vars,
+                         table_spec_dt$by_var),
+        by_var = table_spec_dt$by_var,
+        labels = label_list)),
+    pattern = map(table_spec_dt, table_spec_data_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    plot_demographics_categorical_pdf_file_list,
+    write_summary_plot_list(
+      plot_list   = plot_demographics_categorical_list,
+      path        = plot_output_directory_path,
+      width_in    = plot_width_in,
+      plot_theme  = plot_theme_categorical,
+      plot_scales = plot_scales_categorical_list,
+      device_ext  = plot_device_ext),
+    pattern = map(plot_demographics_categorical_list,
+                  plot_scales_categorical_list),
+    format = "file"
+  ),
+  
+  # ==========================================================================
+  # 2. Presenting severity
+  # ==========================================================================
+  tar_target(
+    plot_severity_continuous_list,
+    c(list(plot_family     = "severity_continuous",
+           population_slug = table_spec_dt$population_slug,
+           by_var          = table_spec_dt$by_var,
+           by_slug         = table_spec_dt$by_slug),
+      build_continuous_summary_plot(
+        dt     = table_spec_data_list,
+        vars   = plot_severity_continuous_vars,
+        by_var = table_spec_dt$by_var,
+        labels = label_list)),
+    pattern = map(table_spec_dt, table_spec_data_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    plot_severity_continuous_pdf_file_list,
+    write_summary_plot_list(
+      plot_list  = plot_severity_continuous_list,
+      path       = plot_output_directory_path,
+      width_in   = plot_width_in,
+      plot_theme = plot_theme_continuous_list,
+      device_ext = plot_device_ext),
+    pattern = map(plot_severity_continuous_list, plot_theme_continuous_list),
+    format = "file"
+  ),
+  
+  tar_target(
+    plot_severity_categorical_list,
+    c(list(plot_family     = "severity_categorical",
+           population_slug = table_spec_dt$population_slug,
+           by_var          = table_spec_dt$by_var,
+           by_slug         = table_spec_dt$by_slug),
+      build_categorical_summary_plot(
+        dt     = table_spec_data_list,
+        vars   = setdiff(plot_severity_categorical_vars, table_spec_dt$by_var),
+        by_var = table_spec_dt$by_var,
+        labels = label_list)),
+    pattern = map(table_spec_dt, table_spec_data_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    plot_severity_categorical_pdf_file_list,
+    write_summary_plot_list(
+      plot_list   = plot_severity_categorical_list,
+      path        = plot_output_directory_path,
+      width_in    = plot_width_in,
+      plot_theme  = plot_theme_categorical,
+      plot_scales = plot_scales_categorical_list,
+      device_ext  = plot_device_ext),
+    pattern = map(plot_severity_categorical_list, plot_scales_categorical_list),
+    format = "file"
+  ),
+  
+  # ==========================================================================
+  # 3. Infection source and microbiology
+  # ==========================================================================
+  tar_target(
+    plot_infection_list,
+    c(list(plot_family     = "infection",
+           population_slug = table_spec_dt$population_slug,
+           by_var          = table_spec_dt$by_var,
+           by_slug         = table_spec_dt$by_slug),
+      build_categorical_summary_plot(
+        dt         = table_spec_data_list,
+        vars       = setdiff(plot_infection_vars, table_spec_dt$by_var),
+        by_var     = table_spec_dt$by_var,
+        labels     = label_list,
+        max_levels = 8L)),
+    pattern = map(table_spec_dt, table_spec_data_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    plot_infection_pdf_file_list,
+    write_summary_plot_list(
+      plot_list   = plot_infection_list,
+      path        = plot_output_directory_path,
+      width_in    = plot_width_in,
+      plot_theme  = plot_theme_categorical,
+      plot_scales = plot_scales_categorical_list,
+      device_ext  = plot_device_ext),
+    pattern = map(plot_infection_list, plot_scales_categorical_list),
+    format = "file"
+  ),
+  
+  # ==========================================================================
+  # 4. Treatments
+  # ==========================================================================
+  tar_target(
+    plot_treatment_continuous_list,
+    c(list(plot_family     = "treatments_continuous",
+           population_slug = table_spec_dt$population_slug,
+           by_var          = table_spec_dt$by_var,
+           by_slug         = table_spec_dt$by_slug),
+      build_continuous_summary_plot(
+        dt     = table_spec_data_list,
+        vars   = plot_treatment_continuous_vars,
+        by_var = table_spec_dt$by_var,
+        labels = label_list)),
+    pattern = map(table_spec_dt, table_spec_data_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    plot_treatment_continuous_pdf_file_list,
+    write_summary_plot_list(
+      plot_list  = plot_treatment_continuous_list,
+      path       = plot_output_directory_path,
+      width_in   = plot_width_in,
+      plot_theme = plot_theme_continuous_list,
+      device_ext = plot_device_ext),
+    pattern = map(plot_treatment_continuous_list, plot_theme_continuous_list),
+    format = "file"
+  ),
+  
+  tar_target(
+    plot_treatment_categorical_list,
+    c(list(plot_family     = "treatments_categorical",
+           population_slug = table_spec_dt$population_slug,
+           by_var          = table_spec_dt$by_var,
+           by_slug         = table_spec_dt$by_slug),
+      build_categorical_summary_plot(
+        dt     = table_spec_data_list,
+        vars   = setdiff(plot_treatment_categorical_vars, table_spec_dt$by_var),
+        by_var = table_spec_dt$by_var,
+        labels = label_list)),
+    pattern = map(table_spec_dt, table_spec_data_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    plot_treatment_categorical_pdf_file_list,
+    write_summary_plot_list(
+      plot_list   = plot_treatment_categorical_list,
+      path        = plot_output_directory_path,
+      width_in    = plot_width_in,
+      plot_theme  = plot_theme_categorical,
+      plot_scales = plot_scales_categorical_list,
+      device_ext  = plot_device_ext),
+    pattern = map(plot_treatment_categorical_list,
+                  plot_scales_categorical_list),
+    format = "file"
+  ),
+  
+  tar_target(plot_discrete_vars, c("nzdep2023_int")),
+  
+  tar_target(
+    plot_deprivation_list,
+    c(list(plot_family     = "deprivation",
+           population_slug = table_spec_dt$population_slug,
+           by_var          = table_spec_dt$by_var,
+           by_slug         = table_spec_dt$by_slug),
+      build_discrete_summary_plot(
+        dt     = table_spec_data_list,
+        vars   = plot_discrete_vars,
+        by_var = table_spec_dt$by_var,
+        labels = label_list)),
+    pattern = map(table_spec_dt, table_spec_data_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    plot_deprivation_pdf_file_list,
+    write_summary_plot_list(
+      plot_list   = plot_deprivation_list,
+      path        = plot_output_directory_path,
+      width_in    = plot_width_in,
+      plot_theme  = plot_theme_categorical,
+      plot_scales = list(plot_fill_scale_list),
+      device_ext  = plot_device_ext),
+    pattern = map(plot_deprivation_list, plot_fill_scale_list),
+    format = "file"
+  ),
+  
+  tar_target(daoh_plot_y_trans, "none"),
+  tar_target(plot_mortality_fill_scale, summary_plot_mortality_fill_scale()),
+  tar_target(plot_daoh_count_scale, summary_plot_count_scale(daoh_plot_y_trans)),
+  tar_target(plot_daoh_x_scale, summary_plot_daoh_x_scale(limits = NULL)),
+  
+  tar_target(
+    plot_daoh_scales,
+    list(plot_mortality_fill_scale, plot_daoh_count_scale, plot_daoh_x_scale)
+  ),
+  
+  tar_target(
+    plot_daoh_distribution_list,
+    c(list(plot_family     = "daoh_distribution",
+           population_slug = table_spec_dt$population_slug,
+           by_var          = table_spec_dt$by_var,
+           by_slug         = table_spec_dt$by_slug),
+      build_daoh_distribution_plot(
+        dt           = table_spec_data_list,
+        by_var       = table_spec_dt$by_var,
+        labels       = label_list)),
+    pattern = map(table_spec_dt, table_spec_data_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    plot_daoh_distribution_pdf_file_list,
+    write_summary_plot_list(
+      plot_list   = plot_daoh_distribution_list,
+      path        = plot_output_directory_path,
+      width_in    = plot_width_in,
+      plot_theme  = plot_theme_categorical,
+      plot_scales = plot_daoh_scales,
+      device_ext  = plot_device_ext),
+    pattern = map(plot_daoh_distribution_list),
+    format = "file"
+  ),
+  
+  # ==========================================================================
+  # 5. Outcomes
+  # ==========================================================================
+  tar_target(
+    plot_outcome_list,
+    c(list(plot_family     = "outcomes",
+           population_slug = table_spec_dt$population_slug,
+           by_var          = table_spec_dt$by_var,
+           by_slug         = table_spec_dt$by_slug),
+      build_categorical_summary_plot(
+        dt     = table_spec_data_list,
+        vars   = setdiff(plot_outcome_vars, table_spec_dt$by_var),
+        by_var = table_spec_dt$by_var,
+        labels = label_list)),
+    pattern = map(table_spec_dt, table_spec_data_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    plot_outcome_pdf_file_list,
+    write_summary_plot_list(
+      plot_list   = plot_outcome_list,
+      path        = plot_output_directory_path,
+      width_in    = plot_width_in,
+      plot_theme  = plot_theme_categorical,
+      plot_scales = plot_scales_categorical_list,
+      device_ext  = plot_device_ext),
+    pattern = map(plot_outcome_list, plot_scales_categorical_list),
     format = "file"
   ),
   
