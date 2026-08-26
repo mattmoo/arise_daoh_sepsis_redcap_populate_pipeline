@@ -225,7 +225,7 @@ generate_analysis_dt <- function(eligible_event_dt,
                  "mort_in_hospital",
                  "mort.30.day", "mort.90.day",
                  "daoh_period_start", "daoh_period_end",
-                 "dih", "dd", "daoh", "daoh_jittered")
+                 "dih", "dd", "daoh", "dah", "daoh_jittered")
   )
   
   new_order <- unlist(col_groups, use.names = FALSE)

@@ -8,9 +8,10 @@
 #' across four ethnicity groups gives forty bars in one panel. Multiple
 #' variables become columns, with free x scales since scores differ in range.
 #'
-#' Returns geometry and faceting only; theme and fill scale are applied at the
-#' output stage. The x breaks are set here because they are derived from the
-#' data's observed range rather than being a styling choice.
+#' Returns geometry and faceting only. Theme, fill scale, axis titles and the
+#' caption are applied at the output stage; this function sets no labels. The x
+#' breaks are the one exception: they are derived from the data's observed range
+#' rather than being a styling choice, so they cannot be set without the data.
 #'
 #' @param dt data.table
 #' @param vars discrete integer variables to plot
@@ -83,14 +84,7 @@ build_discrete_summary_plot <- function(dt,
     ggplot2::facet_grid(rows = ggplot2::vars(.group),
                         cols = ggplot2::vars(.var),
                         scales = "free_x", switch = "y") +
-    ggplot2::scale_x_continuous(breaks = brk) +
-    ggplot2::labs(
-      x = NULL,
-      y = if (as_proportion) "Percentage within group" else "Patients",
-      caption = if (as_proportion)
-        "Bars are percentages within each group, so groups of unequal size are comparable."
-        else "Bars are patient counts."
-    )
+    ggplot2::scale_x_continuous(breaks = brk)
 
   list(plot = p,
        height_in = min(9.5, 1.2 + n_groups * 1.15),

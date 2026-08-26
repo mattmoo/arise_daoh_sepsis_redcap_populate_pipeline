@@ -43,6 +43,7 @@ generate_daoh_dt <- function(index_event_dt,
                         dih = as.numeric(dih),
                         dd = as.numeric(dd),
                         daoh = as.numeric(daoh),
+                        dah = ifelse(as.numeric(dd) > 0, yes = 0, no = as.numeric(daoh)),
                         daoh_jittered = as.numeric(daoh) + rnorm(.N, mean = 0, sd = 0.05)
   )]
   

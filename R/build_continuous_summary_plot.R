@@ -1,7 +1,7 @@
 #' Build a boxplot panel grid for continuous variables
 #'
-#' Returns geometry and faceting only; themes and scales are applied at the
-#' output stage. Panels wrap into columns with free y scales, because every
+#' Returns geometry and faceting only. Scales, theme, axis titles and the
+#' caption are applied at the output stage; this function sets no labels. Panels wrap into columns with free y scales, because every
 #' panel shares the group axis and differs only in units.
 #'
 #' Jittered raw points are drawn over the boxes deliberately: at n = 272
@@ -56,12 +56,7 @@ build_continuous_summary_plot <- function(dt,
                          colour = "grey20") +
     ggplot2::stat_summary(fun = mean, geom = "point", shape = 23, size = 1.8,
                           fill = "white", colour = "black") +
-    ggplot2::facet_wrap(~ .var, ncol = ncol, scales = "free_y") +
-    ggplot2::labs(
-      x = if (!is.null(by_var)) lab(by_var) else NULL,
-      y = NULL,
-      caption = "Box: median and IQR; whiskers 1.5 x IQR; diamond: mean."
-    )
+    ggplot2::facet_wrap(~ .var, ncol = ncol, scales = "free_y")
 
   list(plot = p,
        height_in = min(9.5, 1.1 + nrow * 1.8),

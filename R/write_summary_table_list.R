@@ -9,7 +9,9 @@
 #'   population_label, by_var, by_slug and table
 #' @param path root table output directory
 #' @param labels named list of variable labels, used for the caption
-write_summary_table_list <- function(table_list, path, labels = NULL) {
+write_summary_table_list <- function(table_list, path, labels = NULL,
+                                     width_in = 6, font_size = NULL,
+                                     pr_section = NULL) {
 
   required <- c("table_family", "population_slug", "population_label",
                 "by_var", "by_slug", "table")
@@ -44,6 +46,9 @@ write_summary_table_list <- function(table_list, path, labels = NULL) {
     table    = table_list$table,
     filename = filename,
     path     = dir_path,
-    caption  = caption
+    caption  = caption,
+    width_in   = width_in,
+    font_size  = font_size,
+    pr_section = pr_section
   )
 }

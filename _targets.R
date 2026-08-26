@@ -28,6 +28,7 @@ package_list = c(
   "ggplot2",
   "gtsummary",
   "fst",
+  "rms",
   # "readxl",
   "xlsx",
   "openxlsx",
@@ -42,7 +43,9 @@ package_list = c(
   "daohtools",
   "forcats",
   "scales",
-  "RColorBrewer"
+  "RColorBrewer",
+  "marginaleffects",
+  "rsample"
   # "xlsx"
 )
 new.packages <- package_list[!(package_list %in% installed.packages()[,"Package"])]
@@ -183,13 +186,27 @@ tar_plan(
       daoh_period_start              = "DAOH period start",
       daoh_period_end                = "DAOH period end",
       dih                            = "Days in hospital",
+      dah = 'Days at home',
       dd                             = "Days dead",
       daoh                           = "Days alive and out of hospital (90)",
       daoh_jittered                  = "DAOH90 (jittered)"
     )
   ),
   
-
+  tar_target(
+    landscape_ft_prop_section,
+    officer::prop_section(
+      page_size = officer::page_size(width = 8.27, height = 11.69,
+                                     orient = "landscape"),
+      page_margins = officer::page_mar(
+        top = 0.75, bottom = 0.75, left = 0.75, right = 0.75,
+        header = 0.3, footer = 0.3, gutter = 0)
+    )
+  ),
+  
+  tar_target(table_docx_font_size, 10),
+  tar_target(table_docx_width_in, 10.19),   # A4 landscape (11.69) less margins
+  
   tar_target(
     input_data_directory_path,
     '//files.auckland.ac.nz/research/resmed202400055-daoh-sepsis-data/data/raw'
@@ -952,16 +969,22 @@ tar_plan(
   
   tar_target(
     table_demographics_docx_file_list,
-    write_summary_table_list(table_demographics_gt_list,
-                             table_output_directory_path, label_list),
-    pattern = map(table_demographics_gt_list),
-    format = "file"
+    write_summary_table_list(
+      table_demographics_gt_list,
+      table_output_directory_path,
+      width_in = table_docx_width_in,
+      font_size = table_docx_font_size,
+      pr_section = landscape_ft_prop_section
+    ), pattern = map(table_demographics_gt_list), format = "file"
   ),
   
   tar_target(
     table_severity_docx_file_list,
     write_summary_table_list(table_severity_gt_list,
-                             table_output_directory_path, label_list),
+                             table_output_directory_path, label_list,
+                             width_in = table_docx_width_in,
+                             font_size = table_docx_font_size,
+                             pr_section = landscape_ft_prop_section),
     pattern = map(table_severity_gt_list),
     format = "file"
   ),
@@ -969,7 +992,10 @@ tar_plan(
   tar_target(
     table_infection_docx_file_list,
     write_summary_table_list(table_infection_gt_list,
-                             table_output_directory_path, label_list),
+                             table_output_directory_path, label_list,
+                             width_in = table_docx_width_in,
+                             font_size = table_docx_font_size,
+                             pr_section = landscape_ft_prop_section),
     pattern = map(table_infection_gt_list),
     format = "file"
   ),
@@ -977,7 +1003,10 @@ tar_plan(
   tar_target(
     table_treatment_docx_file_list,
     write_summary_table_list(table_treatment_gt_list,
-                             table_output_directory_path, label_list),
+                             table_output_directory_path, label_list,
+                             width_in = table_docx_width_in,
+                             font_size = table_docx_font_size,
+                             pr_section = landscape_ft_prop_section),
     pattern = map(table_treatment_gt_list),
     format = "file"
   ),
@@ -985,14 +1014,15 @@ tar_plan(
   tar_target(
     table_outcome_docx_file_list,
     write_summary_table_list(table_outcome_gt_list,
-                             table_output_directory_path, label_list),
+                             table_output_directory_path, label_list,
+                             width_in = table_docx_width_in,
+                             font_size = table_docx_font_size,
+                             pr_section = landscape_ft_prop_section),
     pattern = map(table_outcome_gt_list),
     format = "file"
   ),
   
   # ---- DAOH bootstrap, branched over the same specs ------------------------
-
-  
   tar_target(
     daoh_boot_dt_list,
     groupingsets(
@@ -1027,8 +1057,407 @@ tar_plan(
   tar_target(
     daoh_boot_docx_file_list,
     write_summary_table_list(daoh_boot_ft_list,
-                             table_output_directory_path, label_list),
+                             table_output_directory_path, label_list,
+                             width_in = table_docx_width_in,
+                             font_size = table_docx_font_size,
+                             pr_section = landscape_ft_prop_section),
     pattern = map(daoh_boot_ft_list),
+    format = "file"
+  ),
+  
+  # ---- label lists ---------------------------------------------------------
+  tar_target(
+    covariate_set_label_list,
+    list(
+      m0      = "Unadjusted",
+      m1      = "+ age, gender",
+      m2      = "+ deprivation, comorbidity",
+      m3_news = "+ NEWS",
+      m3_comp = "+ vital sign components",
+      m4      = "+ NEWS, lactate",
+      m5      = "+ NEWS, triage category"
+    )
+  ),
+  
+  tar_target(
+    population_label_list,
+    list(all_sepsis = "All severe sepsis",
+         arise_eligible = "ARISE eligible")
+  ),
+  
+  # ---- specification -------------------------------------------------------
+  tar_target(regression_tau_primary, c(0.5, 0.75, 0.9)),
+  tar_target(regression_tau_grid,    seq(0.05, 0.95, by = 0.05)),
+  tar_target(regression_boot_R,      1000L),
+  tar_target(regression_m3_form,     "spline"),
+  tar_target(regression_dither_method, "rq"),
+  tar_target(regression_dither_reps, 1L),
+  
+  tar_target(
+    regression_exposure_dt,
+    data.table(
+      exposure  = c("arise_eligible", "priority.ethnicity.desc.L1"),
+      exposure_slug = c("arise_eligibility", "ethnicity"),
+      reference = c("level", "population"),
+      facet     = c("~ covariate_set", "population_slug ~ covariate_set")
+    )
+  ),
+  
+  tar_target(
+    regression_spec_dt,
+    build_regression_spec_dt(
+      exposures    = regression_exposure_dt$exposure,
+      taus_primary = regression_tau_primary,
+      taus_grid    = regression_tau_grid,
+      populations  = table_population_dt$population_slug
+    )[m3_form %chin% c("none", regression_m3_form)]
+  ),
+  
+  tar_target(
+    regression_spec_data_list,
+    table_population_data_list[[
+      match(regression_spec_dt$population_slug,
+            table_population_dt$population_slug)]],
+    pattern = map(regression_spec_dt),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    regression_group_dt,
+    data.table(
+      group_slug = c("main", "severity", "triage"),
+      rungs = I(list(
+        c("m0", "m1", "m2", "m3_news", "m3_comp", "m4"),
+        c("m3_news", "m3_comp"),
+        c("m3_news", "m5"))),
+      caption_stem = c(
+        "Difference in DAOH90 across the covariate ladder",
+        "Difference in DAOH90 under aggregate versus decomposed severity adjustment",
+        "Difference in DAOH90 with and without adjustment for triage category"),
+      footnote = c(
+        paste("m3_comp substitutes the individual vital signs for the NEWS",
+              "summary rather than adding to it, and is shown for comparison",
+              "rather than as a further step in the sequence."),
+        paste("The two models differ only in how presenting severity is",
+              "represented."),
+        paste("Triage category plausibly lies on the causal pathway from",
+              "ethnicity to outcome, so the triage-adjusted estimate is a",
+              "direct effect and is not comparable with the total effects",
+              "reported in the main analysis."))
+    )
+  ),
+  
+  # ---- fits and effects ----------------------------------------------------
+  tar_target(
+    regression_fit_list,
+    fit_regression_model(
+      spec = regression_spec_dt, dt = regression_spec_data_list,
+      dither_method = regression_dither_method,
+      dither_reps = regression_dither_reps),
+    pattern = map(regression_spec_dt, regression_spec_data_list),
+    iteration = "list"
+  ),
+  
+  tar_target(vcov_boot_R, 500L),
+  tar_target(regression_boot_method, "rsample"),
+  
+  tar_target(
+    regression_vcov_list,
+    build_regression_vcov(regression_fit_list, R = vcov_boot_R),
+    pattern = map(regression_fit_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    regression_effect_dt,
+    rbindlist(lapply(regression_exposure_dt[, .I], \(i)
+                     extract_regression_effects(
+                       model_list = regression_fit_list,
+                       vcov_list  = regression_vcov_list,
+                       exposure   = regression_exposure_dt$exposure[i],
+                       reference  = regression_exposure_dt$reference[i],
+                       boot_method = regression_boot_method,
+                       boot_R     = regression_boot_R)), fill = TRUE),
+    pattern = map(regression_fit_list, regression_vcov_list)
+  ),
+  
+  tar_target(regression_primary_effect_dt,
+             regression_effect_dt[tau_role == "primary"]),
+  
+  tar_target(
+    regression_inventory_dt,
+    rbindlist(lapply(regression_fit_list, \(m)
+                     as.data.table(m[c("spec_id", "population_slug", "covariate_set",
+                                       "m3_form", "model_type", "tau", "tau_role", "n",
+                                       "n_dropped", "n_params", "epp", "thin",
+                                       "nonunique_solution", "nonpositive_fis",
+                                       "estimable", "reason")])), fill = TRUE)
+  ),
+  
+  # ---- scales and labellers ------------------------------------------------
+  tar_target(regression_tau_scale,      regression_tau_x_scale()),
+  tar_target(regression_effect_scale,   regression_effect_y_scale()),
+  
+  tar_target(plot_continuous_caption,  summary_plot_continuous_caption()),
+  tar_target(plot_categorical_caption, summary_plot_categorical_caption()),
+  tar_target(plot_discrete_caption,    summary_plot_discrete_caption()),
+  tar_target(plot_daoh_caption,
+             summary_plot_daoh_caption(
+               y_trans_note = if (daoh_plot_y_trans == "none") NULL
+               else paste(daoh_plot_y_trans, "transformed"))),
+  tar_target(
+    plot_discrete_y_scale,
+    summary_plot_count_scale(
+      trans = "none",
+      name = "Percentage within group",
+      labels = scales::percent_format(accuracy = 1))
+  ),
+
+  
+  tar_target(
+    regression_colour_scale_list,
+    regression_contrast_colour_scale(regression_exposure_dt$exposure,
+                                     label_list),
+    pattern = map(regression_exposure_dt),
+    iteration = "list"
+  ),
+  
+  tar_target(regression_tau_caption_labs, regression_tau_caption()),
+  
+  tar_target(
+    regression_shape_scale,
+    ggplot2::scale_shape_manual(
+      values = c("FALSE" = 16, "TRUE" = 21),
+      labels = c("FALSE" = "Unique", "TRUE" = "Non-unique"),
+      name   = "Quantile regression solution",
+      na.translate = FALSE)
+  ),
+  
+  tar_target(
+    regression_facet_labeller,
+    summary_plot_facet_labeller(
+      covariate_set   = covariate_set_label_list,
+      population_slug = population_label_list)
+  ),
+  
+  tar_target(
+    regression_facet,
+    ggplot2::facet_wrap(
+      ~ covariate_set, ncol = 1, scales = "free_y",
+      labeller = summary_plot_facet_labeller(
+        covariate_set = covariate_set_label_list))
+  ),
+  
+  
+  # ---- plots ---------------------------------------------------------------
+
+  
+  tar_target(
+    regression_single_plot_spec_dt,
+    {
+      combos <- unique(regression_spec_dt[, .(population_slug, covariate_set)])
+      grid <- combos[, CJ(exposure_i = regression_exposure_dt[, .I],
+                          k = .I, sorted = FALSE), by = .(population_slug,
+                                                          covariate_set)]
+      grid[, `:=`(exposure      = regression_exposure_dt$exposure[exposure_i],
+                  exposure_slug = regression_exposure_dt$exposure_slug[exposure_i])]
+      unique(grid[!(exposure == "arise_eligible" &
+                      population_slug == "arise_eligible"),
+                  .(population_slug, covariate_set, exposure, exposure_slug)])
+    }
+  ),
+  
+  tar_target(
+    regression_single_plot_list,
+    c(list(plot_family     = paste0("effect_by_tau_",
+                                    regression_single_plot_spec_dt$exposure_slug,
+                                    "_",
+                                    regression_single_plot_spec_dt$covariate_set),
+           population_slug = file.path(
+             "regression",
+             regression_single_plot_spec_dt$population_slug),
+           by_var          = regression_single_plot_spec_dt$exposure,
+           by_slug         = regression_single_plot_spec_dt$exposure_slug),
+      build_regression_tau_plot(
+        effect_dt      = regression_effect_dt,
+        exposure_var   = regression_single_plot_spec_dt$exposure,
+        covariate_sets = regression_single_plot_spec_dt$covariate_set,
+        populations    = regression_single_plot_spec_dt$population_slug,
+        panel_height_in = 3.0)),
+    pattern = map(regression_single_plot_spec_dt),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    regression_group_plot_spec_dt,
+    {
+      # Which rungs exist in which population, taken from the spec table rather
+      # than restated, so the m0-to-m2 restriction propagates automatically
+      avail <- unique(regression_spec_dt[, .(population_slug, covariate_set)])
+      
+      grid <- CJ(group_i = regression_group_dt[, .I],
+                 exposure_i = regression_exposure_dt[, .I],
+                 population_slug = table_population_dt$population_slug,
+                 sorted = FALSE)
+      
+      grid[, `:=`(
+        group_slug    = regression_group_dt$group_slug[group_i],
+        exposure      = regression_exposure_dt$exposure[exposure_i],
+        exposure_slug = regression_exposure_dt$exposure_slug[exposure_i])]
+      grid[, rungs := regression_group_dt$rungs[group_i]]
+      
+      # Keep only groups whose rungs are all fitted in that population
+      grid[, complete := mapply(
+        \(r, p) all(r %chin% avail[population_slug == p, covariate_set]),
+        rungs, population_slug)]
+      
+      grid[complete == TRUE &
+             !(exposure == "arise_eligible" &
+                 population_slug == "arise_eligible"),
+           .(group_slug, exposure, exposure_slug, population_slug, rungs)]
+    }
+  ),
+  
+  tar_target(
+    regression_group_plot_list,
+    c(list(plot_family     = paste0("effect_by_tau_",
+                                    regression_group_plot_spec_dt$exposure_slug,
+                                    "_", regression_group_plot_spec_dt$group_slug),
+           population_slug = file.path(
+             "regression", regression_group_plot_spec_dt$population_slug),
+           by_var          = regression_group_plot_spec_dt$exposure,
+           by_slug         = regression_group_plot_spec_dt$exposure_slug),
+      build_regression_tau_plot(
+        effect_dt      = regression_effect_dt,
+        exposure_var   = regression_group_plot_spec_dt$exposure,
+        covariate_sets = unlist(regression_group_plot_spec_dt$rungs),
+        populations    = regression_group_plot_spec_dt$population_slug,
+        max_height_in  = Inf)),
+    pattern = map(regression_group_plot_spec_dt),
+    iteration = "list"
+  ),
+  
+  # ---- tables --------------------------------------------------------------
+  tar_target(
+    regression_table_spec_dt,
+    {
+      avail <- unique(regression_spec_dt[, .(population_slug, covariate_set)])
+      
+      grid <- CJ(group_i = regression_group_dt[, .I],
+                 exposure_i = regression_exposure_dt[, .I],
+                 population_slug = table_population_dt$population_slug,
+                 sorted = FALSE)
+      
+      grid[, `:=`(
+        group_slug    = regression_group_dt$group_slug[group_i],
+        caption_stem  = regression_group_dt$caption_stem[group_i],
+        footnote      = regression_group_dt$footnote[group_i],
+        exposure      = regression_exposure_dt$exposure[exposure_i],
+        exposure_slug = regression_exposure_dt$exposure_slug[exposure_i])]
+      grid[, rungs := regression_group_dt$rungs[group_i]]
+      
+      # Keep only groups whose rungs are all fitted in that population
+      grid[, complete := mapply(
+        \(r, p) all(r %chin% avail[population_slug == p, covariate_set]),
+        rungs, population_slug)]
+      
+      grid[complete == TRUE &
+             !(exposure == "arise_eligible" &
+                 population_slug == "arise_eligible"),
+           .(group_slug, caption_stem, footnote, exposure, exposure_slug,
+             population_slug, rungs)]
+    }
+  ),
+  
+  tar_target(
+    regression_ladder_table_list,
+    c(list(table_family    = paste0("ladder_",
+                                    regression_table_spec_dt$group_slug, "_",
+                                    regression_table_spec_dt$exposure_slug),
+           population_slug = regression_table_spec_dt$population_slug,
+           caption_stem    = regression_table_spec_dt$caption_stem,
+           by_var          = regression_table_spec_dt$exposure,
+           by_slug         = regression_table_spec_dt$exposure_slug),
+      build_regression_ladder_table(
+        effect_dt            = regression_primary_effect_dt,
+        exposure_var         = regression_table_spec_dt$exposure,
+        population           = regression_table_spec_dt$population_slug,
+        covariate_sets       = unlist(regression_table_spec_dt$rungs),
+        covariate_set_labels = covariate_set_label_list,
+        footnote             = regression_table_spec_dt$footnote)),
+    pattern = map(regression_table_spec_dt),
+    iteration = "list"
+  ),
+  tar_target(
+    regression_ladder_table_docx_file_list,
+    write_table(
+      table      = regression_ladder_table_list$flextable,
+      filename   = paste0(regression_ladder_table_list$table_family, ".docx"),
+      path       = file.path(table_output_directory_path,
+                             regression_ladder_table_list$population_slug),
+      caption    = paste0("Difference in DAOH90 by ",
+                          tolower(label_list[[regression_ladder_table_list$by_var]]),
+                          ": ", population_label_list[[
+                            regression_ladder_table_list$population_slug]]),
+      width_in   = table_docx_width_in,
+      font_size  = table_docx_font_size,
+      pr_section = landscape_ft_prop_section),
+    pattern = map(regression_ladder_table_list),
+    format = "file"
+  ),
+  
+  tar_target(
+    regression_inventory_table,
+    build_regression_inventory_table(
+      regression_inventory_dt,
+      covariate_set_labels = covariate_set_label_list,
+      population_labels    = population_label_list)
+  ),
+  
+  tar_target(
+    regression_inventory_docx_file,
+    write_table(
+      table      = regression_inventory_table$flextable,
+      filename   = "regression_model_inventory.docx",
+      path       = file.path(table_output_directory_path, "diagnostics"),
+      caption    = "Regression model inventory and fit diagnostics",
+      width_in   = table_docx_width_in,
+      font_size  = table_docx_font_size,
+      pr_section = landscape_ft_prop_section),
+    format = "file"
+  ),
+  
+  tar_target(
+    regression_group_plot_pdf_file_list,
+    write_summary_plot_list(
+      plot_list   = regression_group_plot_list,
+      path        = plot_output_directory_path,
+      width_in    = plot_width_in,
+      plot_theme  = plot_theme_categorical,
+      plot_scales = c(
+        list(regression_tau_scale, regression_effect_scale, regression_facet,
+             ggplot2::scale_shape_manual(values = c(`FALSE` = 16, `TRUE` = 21))),
+        regression_contrast_colour_scale(
+          regression_group_plot_list$by_var, label_list)),
+      device_ext  = plot_device_ext),
+    pattern = map(regression_group_plot_list),
+    format = "file"
+  ),
+  
+  tar_target(
+    regression_single_plot_pdf_file_list,
+    write_summary_plot_list(
+      plot_list   = regression_single_plot_list,
+      path        = plot_output_directory_path,
+      width_in    = plot_width_in,
+      plot_theme  = plot_theme_categorical,
+      plot_scales = c(
+        list(regression_tau_scale, regression_effect_scale, regression_facet,
+             ggplot2::scale_shape_manual(values = c(`FALSE` = 16, `TRUE` = 21))),
+        regression_contrast_colour_scale(
+          regression_single_plot_list$by_var, label_list)),
+      device_ext  = plot_device_ext),
+    pattern = map(regression_single_plot_list),
     format = "file"
   ),
   
@@ -1452,6 +1881,100 @@ tar_plan(
       writexl::write_xlsx(eligibility_dt, path = path)
       path
     }
+  ),
+  
+  tar_target(
+    analysis_data_hash,
+    substr(digest::digest(as.data.frame(analysis_dt)), 1, 8)
+  ),
+  
+  # ---- table folders, one per population -----------------------------------
+  tar_target(
+    table_readme_file_list,
+    write_output_readme(
+      path  = file.path(table_output_directory_path,
+                        table_population_dt$population_slug),
+      title = paste("Tables:", table_population_dt$population_label),
+      description = paste(
+        "Descriptive tables for this population, stratified by ARISE",
+        "eligibility and by prioritised ethnicity."),
+      files = grep(
+        file.path(table_output_directory_path,
+                  table_population_dt$population_slug),
+        c(table_demographics_docx_file_list, table_severity_docx_file_list,
+          table_infection_docx_file_list, table_treatment_docx_file_list,
+          table_outcome_docx_file_list, daoh_boot_docx_file_list),
+        value = TRUE, fixed = TRUE),
+      population_label = table_population_dt$population_label,
+      n = nrow(table_population_data_list[[
+        match(table_population_dt$population_slug,
+              table_population_dt$population_slug)]]),
+      data_hash = analysis_data_hash,
+      caveats = output_readme_caveats(
+        "tables", table_population_dt$population_slug)),
+    pattern = map(table_population_dt),
+    format = "file"
+  ),
+  
+  # ---- plot folders --------------------------------------------------------
+  tar_target(
+    plot_readme_file_list,
+    write_output_readme(
+      path  = file.path(plot_output_directory_path,
+                        table_population_dt$population_slug),
+      title = paste("Figures:", table_population_dt$population_label),
+      description = "Descriptive figures for this population.",
+      files = grep(
+        file.path(plot_output_directory_path,
+                  table_population_dt$population_slug),
+        c(plot_demographics_continuous_pdf_file_list,
+          plot_demographics_categorical_pdf_file_list,
+          plot_severity_continuous_pdf_file_list,
+          plot_severity_categorical_pdf_file_list,
+          plot_infection_pdf_file_list,
+          plot_treatment_continuous_pdf_file_list,
+          plot_treatment_categorical_pdf_file_list,
+          plot_outcome_pdf_file_list,
+          plot_deprivation_pdf_file_list,
+          plot_daoh_distribution_pdf_file_list),
+        value = TRUE, fixed = TRUE),
+      population_label = table_population_dt$population_label,
+      data_hash = analysis_data_hash,
+      caveats = c(output_readme_caveats("plots",
+                                        table_population_dt$population_slug),
+                  output_readme_caveats("daoh"))),
+    pattern = map(table_population_dt),
+    format = "file"
+  ),
+  
+  # ---- regression ----------------------------------------------------------
+  tar_target(
+    regression_readme_file,
+    write_output_readme(
+      path  = file.path(plot_output_directory_path, "regression"),
+      title = "Regression figures",
+      description = paste(
+        "Exposure effect against quantile of DAOH, for each covariate set and",
+        "population. Grouped figures cover a set of models; single-model",
+        "figures cover one."),
+      files = c(regression_group_plot_pdf_file_list,
+                regression_single_plot_pdf_file_list),
+      data_hash = analysis_data_hash,
+      caveats = output_readme_caveats("regression")),
+    format = "file"
+  ),
+  
+  tar_target(
+    cohort_readme_file,
+    write_output_readme(
+      path  = file.path(table_output_directory_path, "cohort"),
+      title = "Cohort derivation",
+      description = paste(
+        "Attrition from the source audit dataset to each analysed population."),
+      files = attrition_table_docx_file,
+      data_hash = analysis_data_hash,
+      caveats = output_readme_caveats("cohort")),
+    format = "file"
   )
   
   
