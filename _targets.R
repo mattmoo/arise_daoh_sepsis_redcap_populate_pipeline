@@ -45,7 +45,9 @@ package_list = c(
   "scales",
   "RColorBrewer",
   "marginaleffects",
-  "rsample"
+  "rsample",
+  "pwr",
+  "modelsummary"
   # "xlsx"
 )
 new.packages <- package_list[!(package_list %in% installed.packages()[,"Package"])]
@@ -783,8 +785,8 @@ tar_plan(
   tar_target(
     table_by_dt,
     data.table(
-      by_var  = c("arise_eligible", "priority.ethnicity.desc.L1"),
-      by_slug = c("arise_eligibility", "ethnicity")
+      by_var  = c("arise_eligible", "priority.ethnicity.desc.L1", "maori"),
+      by_slug = c("arise_eligibility", "ethnicity", "maori")
     )
   ),
   
@@ -1024,14 +1026,18 @@ tar_plan(
   
   # ---- DAOH bootstrap, branched over the same specs ------------------------
   tar_target(
+    daoh_boot_spec_dt,
+    table_spec_dt
+  ),
+  tar_target(
     daoh_boot_dt_list,
     groupingsets(
       table_spec_data_list[!is.na(daoh)],
       j    = boot_daoh(daoh, R = boot_R, conf = boot_conf),
-      by   = table_spec_dt$by_var,
-      sets = list(character(0), table_spec_dt$by_var)
+      by   = daoh_boot_spec_dt$by_var,
+      sets = list(character(0), daoh_boot_spec_dt$by_var)
     ),
-    pattern = map(table_spec_dt, table_spec_data_list),
+    pattern = map(daoh_boot_spec_dt, table_spec_data_list),
     iteration = "list"
   ),
   
@@ -1039,18 +1045,18 @@ tar_plan(
     daoh_boot_ft_list,
     list(
       table_family     = "daoh_bootstrap",
-      population_slug  = table_spec_dt$population_slug,
-      population_label = table_spec_dt$population_label,
-      by_var           = table_spec_dt$by_var,
-      by_slug          = table_spec_dt$by_slug,
+      population_slug  = daoh_boot_spec_dt$population_slug,
+      population_label = daoh_boot_spec_dt$population_label,
+      by_var           = daoh_boot_spec_dt$by_var,
+      by_slug          = daoh_boot_spec_dt$by_slug,
       table = draw_daoh_boot_table(
         boot_dt     = daoh_boot_dt_list,
-        stratum_var = table_spec_dt$by_var,
-        by_vars     = table_spec_dt$by_var,
+        stratum_var = daoh_boot_spec_dt$by_var,
+        by_vars     = daoh_boot_spec_dt$by_var,
         labels      = label_list
       )$flextable
     ),
-    pattern = map(table_spec_dt, daoh_boot_dt_list),
+    pattern = map(daoh_boot_spec_dt, daoh_boot_dt_list),
     iteration = "list"
   ),
   
@@ -1086,7 +1092,7 @@ tar_plan(
   ),
   
   # ---- specification -------------------------------------------------------
-  tar_target(regression_tau_primary, c(0.5, 0.75, 0.9)),
+  tar_target(regression_tau_primary, c(0.1, 0.25, 0.5, 0.75, 0.9)),
   tar_target(regression_tau_grid,    seq(0.05, 0.95, by = 0.05)),
   tar_target(regression_boot_R,      1000L),
   tar_target(regression_m3_form,     "spline"),
@@ -1153,7 +1159,8 @@ tar_plan(
     fit_regression_model(
       spec = regression_spec_dt, dt = regression_spec_data_list,
       dither_method = regression_dither_method,
-      dither_reps = regression_dither_reps),
+      dither_reps = regression_dither_reps,
+      zero_mass_censor = "none"),
     pattern = map(regression_spec_dt, regression_spec_data_list),
     iteration = "list"
   ),
@@ -1195,7 +1202,7 @@ tar_plan(
   ),
   
   # ---- scales and labellers ------------------------------------------------
-  tar_target(regression_tau_scale,      regression_tau_x_scale()),
+  tar_target(regression_tau_scale,      regression_tau_x_scale(breaks = regression_tau_primary)),
   tar_target(regression_effect_scale,   regression_effect_y_scale()),
   
   tar_target(plot_continuous_caption,  summary_plot_continuous_caption()),
@@ -1212,7 +1219,11 @@ tar_plan(
       name = "Percentage within group",
       labels = scales::percent_format(accuracy = 1))
   ),
-
+  
+  tar_target(power_n_scale,     power_plot_n_scale()),
+  tar_target(power_power_scale, power_plot_power_scale()),
+  tar_target(power_delta_scale, power_plot_delta_scale(aes = 'colour')),
+  tar_target(power_delta_fill_scale, power_plot_delta_scale(aes = 'fill')),
   
   tar_target(
     regression_colour_scale_list,
@@ -1242,8 +1253,9 @@ tar_plan(
   
   tar_target(
     regression_facet,
-    ggplot2::facet_wrap(
-      ~ covariate_set, ncol = 1, scales = "free_y",
+    function(scales = "free_y") 
+      ggplot2::facet_wrap(
+      ~ covariate_set, ncol = 1, scales = scales,
       labeller = summary_plot_facet_labeller(
         covariate_set = covariate_set_label_list))
   ),
@@ -1435,10 +1447,14 @@ tar_plan(
       width_in    = plot_width_in,
       plot_theme  = plot_theme_categorical,
       plot_scales = c(
-        list(regression_tau_scale, regression_effect_scale, regression_facet,
-             ggplot2::scale_shape_manual(values = c(`FALSE` = 16, `TRUE` = 21))),
-        regression_contrast_colour_scale(
-          regression_group_plot_list$by_var, label_list)),
+        list(regression_tau_scale,
+             regression_effect_scale,
+             regression_facet(scales = "fixed"),
+             regression_shape_scale,
+             regression_tau_caption_labs),
+        if (regression_group_plot_list$by_var == "priority.ethnicity.desc.L1")
+          regression_ethnicity_contrast_scale()
+        else regression_arise_contrast_scale()),
       device_ext  = plot_device_ext),
     pattern = map(regression_group_plot_list),
     format = "file"
@@ -1452,12 +1468,231 @@ tar_plan(
       width_in    = plot_width_in,
       plot_theme  = plot_theme_categorical,
       plot_scales = c(
-        list(regression_tau_scale, regression_effect_scale, regression_facet,
-             ggplot2::scale_shape_manual(values = c(`FALSE` = 16, `TRUE` = 21))),
-        regression_contrast_colour_scale(
-          regression_single_plot_list$by_var, label_list)),
+        list(regression_tau_scale,
+             regression_effect_scale,
+             regression_facet(scales = "fixed"),
+             regression_shape_scale,
+             regression_tau_caption_labs),
+        if (regression_single_plot_list$by_var == "priority.ethnicity.desc.L1")
+          regression_ethnicity_contrast_scale()
+        else regression_arise_contrast_scale()),
       device_ext  = plot_device_ext),
     pattern = map(regression_single_plot_list),
+    format = "file"
+  ),
+  
+  # ==========================================================================
+  # Model coefficient tables
+  #
+  # One table per population and estimator, columns being the rungs of the
+  # covariate ladder. Complements the marginal-effects tables rather than
+  # replacing them: this shows the model, those show the estimand.
+  #
+  # Both exposures appear as rows in the same table. A coefficient table shows
+  # every term, so splitting by exposure would mean hiding coefficients; the
+  # split exists in the marginal-effects tables only because the estimand
+  # differs between the two exposures there.
+  # ==========================================================================
+  
+  tar_target(
+    regression_term_group_vec,
+    regression_term_groups(exposures = regression_exposure_dt$exposure)
+  ),
+  
+  tar_target(
+    regression_coef_spec_dt,
+    {
+      est <- rbind(
+        data.table(model_type = "lm", tau = NA_real_),
+        data.table(model_type = "rq", tau = regression_tau_primary))
+      
+      spec <- CJ(pop_i = table_population_dt[, .I], est_i = est[, .I],
+                 sorted = FALSE)
+      spec[, `:=`(
+        population_slug  = table_population_dt$population_slug[pop_i],
+        population_label = table_population_dt$population_label[pop_i],
+        model_type       = est$model_type[est_i],
+        tau              = est$tau[est_i])]
+      
+      spec[, slug := paste0(
+        model_type,
+        fifelse(is.na(tau), "", sprintf("_tau%03d", round(tau * 100))))]
+      
+      spec[, estimator_label := fifelse(
+        model_type == "lm", "linear regression",
+        paste0("quantile regression at \u03c4 = ", format(tau, nsmall = 2)))]
+      
+      spec[, .(population_slug, population_label, model_type, tau, slug,
+               estimator_label)]
+    }
+  ),
+  
+  # Rungs available in each population, taken from the fit spec rather than
+  # restated, so the m0-to-m2 restriction on the ARISE-eligible cohort
+  # propagates without a second place to keep in step.
+  tar_target(
+    regression_coef_rungs_list,
+    {
+      main <- unlist(regression_group_dt[group_slug == "main", rungs])
+      avail <- unique(regression_spec_dt[
+        population_slug == regression_coef_spec_dt$population_slug,
+        covariate_set])
+      intersect(main, avail)
+    },
+    pattern = map(regression_coef_spec_dt),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    regression_coef_table_list,
+    c(list(table_family     = paste0("coefficients_",
+                                     regression_coef_spec_dt$slug),
+           population_slug  = regression_coef_spec_dt$population_slug,
+           population_label = regression_coef_spec_dt$population_label,
+           model_type       = regression_coef_spec_dt$model_type,
+           tau              = regression_coef_spec_dt$tau,
+           estimator_label  = regression_coef_spec_dt$estimator_label),
+      build_regression_coef_table(
+        fit_list             = regression_fit_list,
+        population_slug      = regression_coef_spec_dt$population_slug,
+        model_type           = regression_coef_spec_dt$model_type,
+        tau                  = regression_coef_spec_dt$tau,
+        covariate_sets       = regression_coef_rungs_list,
+        covariate_set_labels = covariate_set_label_list,
+        labels               = label_list)),
+    pattern = map(regression_coef_spec_dt, regression_coef_rungs_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    regression_coef_table_docx_file_list,
+    write_table(
+      table      = regression_coef_table_list$flextable,
+      filename   = paste0(regression_coef_table_list$table_family, ".docx"),
+      path       = file.path(table_output_directory_path,
+                             regression_coef_table_list$population_slug),
+      caption    = paste0(
+        "Model coefficients across the covariate ladder: ",
+        regression_coef_table_list$population_label, ", ",
+        regression_coef_table_list$estimator_label),
+      width_in   = table_docx_width_in,
+      font_size  = table_docx_font_size,
+      pr_section = landscape_ft_prop_section),
+    pattern = map(regression_coef_table_list),
+    format = "file"
+  ),
+  
+  
+  tar_target(
+    regression_ame_dt,
+    build_regression_ame_dt(
+      model_list = regression_fit_list,
+      vcov_list  = regression_vcov_list,
+      labels     = label_list),
+    pattern = map(regression_fit_list, regression_vcov_list)
+  ),
+  
+  
+  tar_target(
+    regression_ame_forest_plot_list,
+    c(list(plot_family     = "forest_effects",
+           population_slug = file.path("regression",
+                                       table_population_dt$population_slug),
+           by_slug         = "ladder"),
+      build_regression_forest_plot(
+        estimate_dt          = regression_ame_dt,
+        population           = table_population_dt$population_slug,
+        covariate_sets       = unlist(
+          regression_group_dt[group_slug == "main", rungs]),
+        term_groups = regression_term_group_vec,
+        covariate_set_labels = covariate_set_label_list,
+        exposure_terms       = regression_exposure_dt$exposure,
+        taus                 = regression_tau_primary,
+        title = paste0("Average marginal effects across the covariate ladder: ",
+                       table_population_dt$population_label))),
+    pattern = map(table_population_dt),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    regression_ame_forest_pdf_file_list,
+    write_summary_plot_list(
+      plot_list   = regression_ame_forest_plot_list,
+      path        = plot_output_directory_path,
+      width_in    = plot_width_in,
+      plot_theme  = plot_theme_categorical,
+      plot_scales = list(
+        ggplot2::scale_x_continuous(name = "Effect (days of DAOH\u2089\u2080)"),
+        ggplot2::scale_y_discrete(name = NULL),
+        ggplot2::scale_colour_brewer(palette = "Dark2", name = "Model"),
+        regression_shape_scale,
+        ggplot2::labs(caption = paste(
+          "Average marginal effects with 95% delta-method intervals from a",
+          "bootstrapped covariance matrix, standardised over the observed",
+          "covariate distribution. Continuous covariates are average slopes",
+          "per unit; the comorbidity spline is collapsed to a single average",
+          "slope. Ethnicity is expressed relative to the population average.",
+          "Panels are not commensurable: the first is an effect on the mean,",
+          "the others on the stated percentile. Hollow points indicate a",
+          "non-unique quantile regression solution."))),
+      device_ext  = plot_device_ext),
+    pattern = map(regression_ame_forest_plot_list),
+    format = "file"
+  ),
+  
+  tar_target(
+    regression_coef_dt,
+    build_regression_coef_dt(
+      model_list = regression_fit_list,
+      vcov_list  = regression_vcov_list,
+      labels     = label_list),
+    pattern = map(regression_fit_list, regression_vcov_list)
+  ),
+  
+  tar_target(
+    regression_coef_forest_plot_list,
+    c(list(plot_family     = "forest_coefficients",
+           population_slug = file.path("regression",
+                                       table_population_dt$population_slug),
+           by_slug         = "ladder"),
+      build_regression_forest_plot(
+        estimate_dt          = regression_coef_dt,
+        population           = table_population_dt$population_slug,
+        covariate_sets       = unlist(
+          regression_group_dt[group_slug == "main", rungs]),
+        term_groups = regression_term_group_vec,
+        covariate_set_labels = covariate_set_label_list,
+        exposure_terms       = regression_exposure_dt$exposure,
+        taus                 = regression_tau_primary,
+        title = paste0("Model coefficients: ",
+                       table_population_dt$population_label))),
+    pattern = map(table_population_dt),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    regression_coef_forest_plot_pdf_file_list,
+    write_summary_plot_list(
+      plot_list   = regression_coef_forest_plot_list,
+      path        = plot_output_directory_path,
+      width_in    = plot_width_in,
+      plot_theme  = plot_theme_categorical,
+      plot_scales = list(
+        ggplot2::scale_x_continuous(name = "Coefficient (days of DAOH\u2089\u2080)"),
+        ggplot2::scale_y_discrete(name = NULL),
+        ggplot2::scale_colour_brewer(palette = "Dark2", name = "Model"),
+        regression_shape_scale,
+        ggplot2::labs(caption = paste(
+          "Points are model coefficients with 95% confidence intervals from a",
+          "bootstrapped covariance matrix, using a normal approximation on the",
+          "coefficient scale. Panels are not commensurable: the first is a",
+          "difference in mean DAOH90, the others differences in the stated",
+          "percentile. Ethnicity coefficients are relative to the reference",
+          "level, not to the population average as in the marginal effects",
+          "tables. Hollow points indicate a non-unique quantile regression",
+          "solution."))),
+      device_ext  = plot_device_ext),
+    pattern = map(regression_coef_forest_plot_list),
     format = "file"
   ),
   
@@ -1520,6 +1755,199 @@ tar_plan(
     pattern = map(plot_fill_scale_list),
     iteration = "list"
   ),
+  
+  # ==========================================================================
+  # Power analysis for the proposed ARISE FLUIDS sub-study
+  #
+  # Branched over population. ARISE FLUIDS will recruit from patients meeting
+  # its eligibility criteria, so the ARISE-eligible cohort supplies the
+  # conceptually correct parameters; the full severe sepsis cohort is retained
+  # because it estimates the same quantities from roughly twice the sample and
+  # shows how far the conclusion depends on which population is used.
+  #
+  # Both the standard deviation and the Māori proportion are estimated, so both
+  # are carried with intervals rather than as point values.
+  # ==========================================================================
+  
+  tar_target(power_n_total,     c(1,seq(100, 2000, by = 25))),
+  tar_target(power_delta,         c(5, 7, 10, 15)),
+  tar_target(power_boot_R,        2000L),
+  tar_target(power_protocol_p,    0.20),
+  tar_target(power_control_ratio, 1),
+  tar_target(arise_planned_n,     300),
+  
+  tar_target(
+    power_estimand_dt,
+    data.table(
+      estimand = c("difference", "interaction"),
+      estimand_slug = c("difference", "interaction"),
+      estimand_label = c(
+        "Difference in mean DAOH90 between M\u0101ori and non-M\u0101ori",
+        "Reduction in the M\u0101ori/non-M\u0101ori gap among trial participants"))
+  ),
+  
+  tar_target(
+    power_spec_dt,
+    CJ(pop_i = table_population_dt[, .I],
+       est_i = power_estimand_dt[, .I], sorted = FALSE)[
+         , `:=`(population_slug  = table_population_dt$population_slug[pop_i],
+                population_label = table_population_dt$population_label[pop_i],
+                estimand         = power_estimand_dt$estimand[est_i],
+                estimand_slug    = power_estimand_dt$estimand_slug[est_i],
+                estimand_label   = power_estimand_dt$estimand_label[est_i])][]
+  ),
+  
+  tar_target(
+    power_spec_data_list,
+    table_population_data_list[[power_spec_dt$pop_i]],
+    pattern = map(power_spec_dt),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    power_dt_list,
+    c(as.list(power_spec_dt[, .(population_slug, population_label,
+                                estimand, estimand_slug, estimand_label)]),
+      list(dt = build_power_boot_dt(
+        dt            = power_spec_data_list,
+        n_total       = power_n_total,
+        delta         = power_delta,
+        estimand      = power_spec_dt$estimand,
+        control_ratio = power_control_ratio,
+        R             = power_boot_R))),
+    pattern = map(power_spec_dt, power_spec_data_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    power_protocol_dt_list,
+    build_power_boot_dt(
+      dt            = power_spec_data_list,
+      n_total       = power_n_total,
+      delta         = power_delta,
+      estimand      = power_spec_dt$estimand,
+      control_ratio = power_control_ratio,
+      R             = power_boot_R,
+      p_fixed       = power_protocol_p),
+    pattern = map(power_spec_dt, power_spec_data_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    power_table_list,
+    c(list(table_family     = paste0("power_", power_dt_list$estimand_slug),
+           population_slug  = power_dt_list$population_slug,
+           population_label = power_dt_list$population_label,
+           estimand_slug    = power_dt_list$estimand_slug,
+           estimand_label   = power_dt_list$estimand_label),
+      build_power_table(power_dt_list$dt)),
+    pattern = map(power_dt_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    power_plot_list,
+    c(list(plot_family     = "power",
+           population_slug = file.path("power",
+                                       power_dt_list$population_slug),
+           by_slug         = power_dt_list$estimand_slug,
+           estimand_label  = power_dt_list$estimand_label),
+      build_power_plot(
+        power_dt    = power_dt_list$dt,
+        protocol_dt = power_protocol_dt_list$dt,
+        n_marks     = arise_planned_n,
+        title       = paste0(power_dt_list$estimand_label, ": ",
+                             power_dt_list$population_label))),
+    pattern = map(power_dt_list, power_protocol_dt_list),
+    iteration = "list"
+  ),
+  
+  # ---- output --------------------------------------------------------------
+  tar_target(
+    power_output_directory_path,
+    file.path(output_directory_path, "power")
+  ),
+  
+  tar_target(
+    power_table_docx_file_list,
+    write_table(
+      table      = power_table_list$flextable,
+      filename = paste0("power_", power_table_list$estimand_slug, ".docx"),
+      path       = file.path(power_output_directory_path,
+                             power_table_list$population_slug),
+      caption    = paste0(
+        "Power to detect a difference in mean DAOH90 between M\u0101ori and ",
+        "non-M\u0101ori: ", power_table_list$population_label),
+      width_in   = table_docx_width_in,
+      font_size  = table_docx_font_size,
+      pr_section = landscape_ft_prop_section),
+    pattern = map(power_table_list),
+    format = "file"
+  ),
+  
+  
+  tar_target(
+    power_caption_list,
+    power_plot_caption(
+      n_planned  = arise_planned_n,
+      p_observed = power_dt_list$dt$p_group[1],
+      protocol   = power_plot_list$has_protocol,
+      envelope   = power_plot_list$has_interval),
+    pattern = map(power_dt_list, power_plot_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    power_plot_pdf_file_list,
+    write_summary_plot_list(
+      plot_list   = power_plot_list,
+      path        = output_directory_path,
+      width_in    = plot_width_in,
+      plot_theme  = plot_theme_categorical,
+      plot_scales = 
+        list(
+          power_n_scale,
+          power_power_scale,
+          power_caption_list,
+          power_delta_scale,
+          power_delta_fill_scale
+        ), device_ext  = plot_device_ext), 
+    pattern = map(power_plot_list, power_caption_list),
+    format = "file"
+  ),
+  
+  tar_target(
+    power_readme_file_list,
+    write_output_readme(
+      path  = file.path(power_output_directory_path,
+                        power_table_list$population_slug),
+      title = paste("Power analysis:", power_table_list$population_label),
+      description = paste(
+        "Power to detect a difference in mean DAOH90 between M\u0101ori and",
+        "non-M\u0101ori at a range of trial sizes. These figures inform the",
+        "design of the proposed ARISE FLUIDS sub-study; they do not power the",
+        "present analysis, which is descriptive."),
+      files = c(power_table_docx_file_list, power_plot_pdf_file_list),
+      data_hash = analysis_data_hash,
+      caveats = c(
+        paste("Standard deviations and the M\u0101ori proportion are estimated",
+              "from this cohort and supersede the prior figures, which came",
+              "from nine M\u0101ori and fifty non-M\u0101ori patients."),
+        paste("Both inputs carry uncertainty and are shown across their",
+              "intervals. The resulting spread is a sensitivity range, not a",
+              "confidence interval for power."),
+        paste("A smaller standard deviation gives greater power, so the curve",
+              "labelled lower is the upper edge of the band."),
+        paste("The observed difference in mean DAOH90 was far smaller than the",
+              "prior estimate, so the sample sizes implied here should be read",
+              "alongside the observed effect rather than in isolation."),
+        paste("The calculation compares means. Rank-based, quantile and",
+              "ordinal analyses may have different power on this outcome."))),
+    pattern = map(power_table_list, power_table_docx_file_list,
+                  power_plot_pdf_file_list),
+    format = "file"
+  ),
+  
   
   # ---- variable sets --------------------------------------------------------
   tar_target(plot_demographics_continuous_vars,

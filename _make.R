@@ -1,78 +1,92 @@
 library(targets)
 library(data.table)
 
-# Timestamp taken before the run, so the warning report below covers only
-# targets rebuilt by this call. tar_meta() holds one record per target from its
-# last successful build and never prunes, so without this filter the report
-# returns historical warnings from targets that were skipped.
-run_started_at <- Sys.time()
+# =============================================================================
+# Build the analysis outputs and report on the run.
+#
+# tar_make() is scoped to the output targets rather than run bare, so that
+# exploratory or superseded targets left in _targets.R do not rebuild. Upstream
+# dependencies build automatically.
+# =============================================================================
 
-tar_make(names = c(
-  table_demographics_docx_file_list,
-  table_severity_docx_file_list,
-  table_infection_docx_file_list,
-  table_treatment_docx_file_list,
-  table_outcome_docx_file_list,
-  daoh_boot_docx_file_list,
-  attrition_table_docx_file,
-  
-  plot_demographics_continuous_pdf_file_list,
-  plot_demographics_categorical_pdf_file_list,
-  plot_severity_continuous_pdf_file_list,
-  plot_severity_categorical_pdf_file_list,
-  plot_infection_pdf_file_list,
-  plot_treatment_continuous_pdf_file_list,
-  plot_treatment_categorical_pdf_file_list,
-  plot_outcome_pdf_file_list,
-  plot_deprivation_pdf_file_list,
-  plot_daoh_distribution_pdf_file_list,
-  
-  regression_ladder_table_docx_file_list,
-  regression_inventory_docx_file,
-  regression_group_plot_pdf_file_list,
-  regression_single_plot_pdf_file_list,
-  
-  arise_sepsis_eligibility_xlsx_file,
-  arise_sepsis_xlsx_file
-))
+tar_make(names = tidyselect::matches("_(docx|pdf|xlsx)_file(_list)?$|_readme_file"))
 
-
-#' Warnings and errors from the targets rebuilt since a given time
+#' Report on the targets built by the run that has just finished
+#'
+#' Scoped by `tar_progress()` rather than by build time. `tar_meta()` holds one
+#' record per target from its last successful build and never prunes, so a
+#' report filtered on time returns historical warnings from targets that were
+#' skipped, and the time field is not reliably the build time in any case.
+#' `tar_progress()` resets each run and reports exactly what was attempted.
 #'
 #' Branch hashes are stripped so a warning repeated across two hundred branches
 #' collapses to one row with a count, which is the difference between a readable
 #' report and a screenful of identical lines.
 #'
-#' @param since only report targets built after this time
+#' @return invisibly, a list of the error and warning tables
 report_run_messages <- function() {
   
+  strip_branch <- function(x) sub("_[0-9a-f]{16}$", "", x)
+  
   prog <- as.data.table(tar_progress())
-  built <- prog[progress %chin% c("built", "errored"), name]
+  attempted <- prog[progress %chin% c("completed", "errored"), name]
   
-  m <- as.data.table(tar_meta(fields = c("warnings", "error", "seconds"),
-                              complete_only = TRUE))
-  recent <- m[name %chin% built]
+  meta <- as.data.table(tar_meta(
+    fields = c("warnings", "error", "seconds"), complete_only = TRUE))
+  recent <- meta[name %chin% attempted]
   
-  cat("\n===== RUN SUMMARY =====\n")
-  print(prog[, .N, by = progress])
-  cat(sprintf("Total time : %.1f s\n", sum(recent$seconds, na.rm = TRUE)))
+  cat("\n================ RUN SUMMARY ================\n")
+  if (nrow(prog)) print(prog[, .N, by = progress][order(-N)])
+  cat(sprintf("\nTotal build time: %.1f s\n",
+              sum(recent$seconds, na.rm = TRUE)))
   
-  err <- recent[!is.na(error),
-                .(target = sub("_[0-9a-f]{16}$", "", name), error)]
-  cat(sprintf("\n===== ERRORS (%d branches) =====\n", nrow(err)))
-  if (nrow(err)) print(err[, .N, by = .(target, error)][order(-N)]) else cat("None.\n")
+  # ---- errors --------------------------------------------------------------
+  err <- recent[!is.na(error), .(target = strip_branch(name), error)]
+  cat(sprintf("\n---- ERRORS (%d branches) ----\n", nrow(err)))
+  if (nrow(err)) {
+    print(err[, .N, by = .(target, error)][order(-N)])
+  } else {
+    cat("None.\n")
+  }
   
-  wrn <- recent[!is.na(warnings),
-                .(target = sub("_[0-9a-f]{16}$", "", name), warnings)]
-  cat(sprintf("\n===== WARNINGS (%d branches) =====\n", nrow(wrn)))
-  if (nrow(wrn)) print(wrn[, .N, by = .(target, warnings)][order(-N)]) else cat("None.\n")
+  # ---- warnings ------------------------------------------------------------
+  wrn <- recent[!is.na(warnings), .(target = strip_branch(name), warnings)]
+  cat(sprintf("\n---- WARNINGS (%d branches) ----\n", nrow(wrn)))
+  if (nrow(wrn)) {
+    print(wrn[, .N, by = .(target, warnings)][order(-N)])
+  } else {
+    cat("None.\n")
+  }
   
-  cat("\n===== SLOWEST =====\n")
-  print(recent[, .(seconds = sum(seconds, na.rm = TRUE), branches = .N),
-               by = .(target = sub("_[0-9a-f]{16}$", "", name))][
-                 order(-seconds)][seq_len(min(10, .N))])
+  # ---- slowest -------------------------------------------------------------
+  slow <- recent[, .(seconds = round(sum(seconds, na.rm = TRUE), 1),
+                     branches = .N),
+                 by = .(target = strip_branch(name))][order(-seconds)]
+  cat("\n---- SLOWEST TARGETS ----\n")
+  print(slow[seq_len(min(10L, .N))])
   
-  invisible(list(errors = err, warnings = wrn))
+  # ---- provenance ----------------------------------------------------------
+  # Printed so the hash can be checked against the one embedded in the output
+  # folder READMEs and the xlsx filenames. Outputs carrying different hashes
+  # were built from different data and should not be quoted together.
+  cat("\n---- PROVENANCE ----\n")
+  hash <- tryCatch(tar_read(analysis_data_hash), error = function(e) NA)
+  cat("Analysis data hash:", if (is.na(hash)) "unavailable" else hash, "\n")
+  cat("Run completed     :",
+      format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"), "\n")
+  
+  # ---- stale output guard --------------------------------------------------
+  # A failed run leaves whatever was written before the failure in the output
+  # folders, where a co-author will open it without knowing the run did not
+  # finish. Say so loudly rather than relying on the console scrollback.
+  if (nrow(prog[progress == "errored"])) {
+    cat("\n")
+    warning("Pipeline errored. Output folders may contain files from a ",
+            "partial run and should not be circulated until it completes ",
+            "cleanly.", call. = FALSE, immediate. = TRUE)
+  }
+  
+  invisible(list(errors = err, warnings = wrn, slowest = slow))
 }
 
 report_run_messages()

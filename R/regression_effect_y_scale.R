@@ -19,26 +19,26 @@
 #' @param by break interval in days; NULL lets ggplot choose
 #' @param expand axis expansion
 regression_effect_y_scale <- function(name = "Difference in DAOH, days",
-                                      symmetric = TRUE,
-                                      by = NULL,
+                                      limits = NULL,
+                                      breaks = NULL,
                                       expand = ggplot2::expansion(c(0.05, 0.05)),
                                       ...) {
 
-  brk <- if (is.null(by)) ggplot2::waiver()
-         else function(lim) seq(floor(lim[1] / by) * by,
-                                ceiling(lim[2] / by) * by, by = by)
+  # brk <- if (is.null(by)) ggplot2::waiver()
+  #        else function(lim) seq(floor(lim[1] / by) * by,
+  #                               ceiling(lim[2] / by) * by, by = by)
 
-  lim <- if (isTRUE(symmetric)) function(lim) {
-    finite <- lim[is.finite(lim)]
-    if (!length(finite)) return(c(-1, 1))
-    m <- max(abs(finite))
-    if (!is.finite(m) || m == 0) c(-1, 1) else c(-1, 1) * m
-  } else ggplot2::waiver()
+  # lim <- if (isTRUE(symmetric)) function(lim) {
+  #   finite <- lim[is.finite(lim)]
+  #   if (!length(finite)) return(c(-1, 1))
+  #   m <- max(abs(finite))
+  #   if (!is.finite(m) || m == 0) c(-1, 1) else c(-1, 1) * m
+  # } else ggplot2::waiver()
 
   ggplot2::scale_y_continuous(
     name   = name,
-    breaks = brk,
-    limits = lim,
+    breaks = breaks,
+    limits = limits,
     expand = expand,
     ...
   )

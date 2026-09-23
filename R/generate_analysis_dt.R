@@ -178,6 +178,10 @@ generate_analysis_dt <- function(eligible_event_dt,
   
   analysis_dt[, gender := factor(gender, levels = c('F', 'M', 'U'), labels = c('Female', 'Male', 'Unknown'))]
   
+  analysis_dt[, maori := factor(fifelse(priority.ethnicity.desc.L1 == "Māori",
+                              "Māori", "non-Māori"),
+                      levels = c("non-Māori", "Māori"))]
+  
   col_groups <- list(
     ids = c("pms_unique_identifier", "PRIM_HCU", "index_event_id", "record_id",
             "nmds_event_id", "nnpac_event_id"),
@@ -189,7 +193,7 @@ generate_analysis_dt <- function(eligible_event_dt,
     # Table 1
     demographics = c("age_years", "gender",
                      "ethnicity_priority", "priority.ethnicity.code.L1",
-                     "priority.ethnicity.desc.L1", "priority.ethnicity.desc.L2", 'nzdep2023',
+                     "priority.ethnicity.desc.L1", "priority.ethnicity.desc.L2", 'maori', 'nzdep2023',
                      'nzdep2023_quintile', 'nzdep2023_int',
                      'nzdep2023_quintile_int'),
     

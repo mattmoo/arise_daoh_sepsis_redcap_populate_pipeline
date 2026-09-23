@@ -25,6 +25,33 @@
 #' Both are surfaced so that a curve drawn from flagged fits can be marked in
 #' the figure rather than silently presented as clean.
 #'
+#' Zero-mass censoring, controlled by `zero_mass_censor`:
+#'
+#' DAOH has a large point mass at zero. Below that mass the conditional quantile
+#' is pinned at the floor, and a fitted contrast is not an estimate of anything
+#' about DAOH. With dithering it is worse than uninformative: below the floor
+#' every raw value is exactly zero, so the dithered values are pure uniform
+#' noise and `rq` will return a tight interval around zero that reads as
+#' evidence of no difference when it is an artefact of the jitter added by the
+#' analyst.
+#'
+#'   "group"     Censor only where EVERY exposure group is at the floor, i.e.
+#'               tau <= min(proportion at zero, by group). Between the minimum
+#'               and maximum group proportions the contrast is real and often
+#'               the most informative part of the curve: it is the range where
+#'               one group has left the floor and another has not. This is the
+#'               default because the marginal rule censors exactly that range.
+#'   "marginal"  Censor where tau is at or below the pooled proportion at zero.
+#'               More conservative, and the previous behaviour.
+#'   "none"      Fit everywhere and let the estimates speak. Useful for
+#'               inspecting what the censored region actually returns, but the
+#'               resulting near-zero band should not be presented as an
+#'               estimate without the caveat above.
+#'
+#' `p_zero_min`, `p_zero_max` and `p_zero_marginal` are returned regardless of
+#' the setting, so a figure can shade the structurally-zero region whichever
+#' rule was applied.
+#'
 #' Dither options, following Machado & Santos Silva (2005):
 #'
 #'   "column"  use a pre-jittered column (daoh_jittered), fixed across all
@@ -47,6 +74,10 @@
 #' @param dither_method "column", "rq" or "none"
 #' @param dither_value width passed to quantreg::dither() when method is "rq"
 #' @param dither_reps independent dithers to average over; 1 for a single draw
+#' @param zero_mass_censor "group" (default), "marginal", or "none". See the
+#'   note above on which quantiles of a zero-inflated outcome are meaningful.
+#' @param zero_mass_tol margin added to the censoring threshold, so a tau
+#'   fractionally above the floor is not fitted on a handful of observations
 #'
 #' @return list with fit (or NULL), spec fields, diagnostics and flags
 fit_regression_model <- function(spec,
@@ -55,10 +86,14 @@ fit_regression_model <- function(spec,
                                  min_epp = 10,
                                  dither_method = c("column", "rq", "none"),
                                  dither_value = 1,
-                                 dither_reps = 1L) {
+                                 dither_reps = 1L,
+                                 zero_mass_censor = c("group", "marginal",
+                                                      "none"),
+                                 zero_mass_tol = 0.02) {
   
   stopifnot(nrow(spec) == 1L)
   dither_method <- match.arg(dither_method)
+  zero_mass_censor <- match.arg(zero_mass_censor)
   
   out <- list(
     spec_id            = spec$spec_id,
@@ -81,6 +116,12 @@ fit_regression_model <- function(spec,
     thin               = NA,
     nonunique_solution = FALSE,
     nonpositive_fis    = FALSE,
+    zero_mass_censor   = if (spec$model_type == "rq") zero_mass_censor
+    else NA_character_,
+    p_zero_marginal    = NA_real_,
+    p_zero_min         = NA_real_,
+    p_zero_max         = NA_real_,
+    below_zero_mass    = NA,
     other_warnings     = character(0),
     coef_averaged      = NULL,
     estimable          = FALSE,
@@ -119,17 +160,47 @@ fit_regression_model <- function(spec,
     return(out)
   }
   
-  # ---- zero-mass guard for rq ---------------------------------------------
-  # Taus at or below the mass at zero are not estimable in any useful sense:
-  # the fitted quantile is pinned at the floor for every covariate pattern.
+  # ---- zero-mass assessment for rq ----------------------------------------
   # Assessed on the raw outcome, since a dithered value is no longer exactly 0.
+  # Computed and returned whatever the censoring rule, so a figure can shade the
+  # structurally-zero region even when nothing was censored.
   if (spec$model_type == "rq") {
+    
     raw <- sub("_jittered$", "", spec$outcome)
-    p_zero <- if (raw %chin% names(d)) mean(d[[raw]] == 0, na.rm = TRUE)
-    else mean(mf[[outcome]] <= 0.5, na.rm = TRUE)
-    if (spec$tau <= p_zero + 0.02) {
-      out$reason <- sprintf("tau %.2f at or below zero mass (%.2f)",
-                            spec$tau, p_zero)
+    has_raw <- raw %chin% names(d)
+    
+    zero_vec <- if (has_raw) d[[raw]] == 0 else mf[[outcome]] <= 0.5
+    out$p_zero_marginal <- mean(zero_vec, na.rm = TRUE)
+    
+    # By exposure group. The contrast between the smallest and largest group
+    # proportions is the range where one group has left the floor and another
+    # has not, which the marginal rule would censor.
+    exps <- intersect(unlist(spec$exposures, use.names = FALSE), names(d))
+    p_by_group <- if (length(exps) && has_raw) {
+      unlist(lapply(exps, function(v) {
+        g <- d[!is.na(get(v)), .(p = mean(get(raw) == 0, na.rm = TRUE)),
+               by = v]$p
+        g[is.finite(g)]
+      }))
+    } else out$p_zero_marginal
+    
+    if (!length(p_by_group)) p_by_group <- out$p_zero_marginal
+    out$p_zero_min <- min(p_by_group)
+    out$p_zero_max <- max(p_by_group)
+    
+    threshold <- switch(zero_mass_censor,
+                        group    = out$p_zero_min,
+                        marginal = out$p_zero_marginal,
+                        none     = -Inf)
+    
+    out$below_zero_mass <- spec$tau <= out$p_zero_min + zero_mass_tol
+    
+    if (spec$tau <= threshold + zero_mass_tol) {
+      out$reason <- sprintf(
+        "tau %.2f at or below the zero mass (%s %.2f); censored by rule '%s'",
+        spec$tau,
+        if (zero_mass_censor == "group") "smallest group" else "marginal",
+        threshold, zero_mass_censor)
       return(out)
     }
   }

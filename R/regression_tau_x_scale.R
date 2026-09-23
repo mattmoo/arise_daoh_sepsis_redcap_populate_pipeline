@@ -13,13 +13,13 @@
 #' @param accuracy rounding for the percentage labels
 #' @param expand axis expansion
 regression_tau_x_scale <- function(name = "Quantile of DAOH (tau)",
-                                   by = 0.25,
+                                   breaks = seq(0, 1, by = 0.25),
                                    accuracy = 1,
                                    expand = ggplot2::expansion(c(0.02, 0.02)),
                                    ...) {
   ggplot2::scale_x_continuous(
     name   = name,
-    breaks = seq(0, 1, by = by),
+    breaks = breaks,
     labels = scales::percent_format(accuracy = accuracy),
     expand = expand,
     ...
