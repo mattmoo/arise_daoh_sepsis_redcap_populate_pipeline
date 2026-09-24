@@ -520,7 +520,8 @@ tar_plan(
   ),
   tar_target(
     first_lactate_dt,
-    adhb_event_lactate_results_dt[, .SD[Sample_time == min(Sample_time)], by = PMS_UNIQUE_IDENTIFIER]
+    adhb_event_lactate_results_dt[order(Sample_time, -Result),
+                                  .SD[1], by = PMS_UNIQUE_IDENTIFIER]
   ),
   tar_target(
     max_lactate_dt,

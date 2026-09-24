@@ -86,8 +86,10 @@ generate_ed_event_dt <- function(adhb_event_dt,
            'pms_unique_identifier')
   ed_event_dt[, AGENCY := NULL]
   
-  assertthat::are_equal(ed_event_dt[, .N], adhb_event_dt[, .N])
-  
+  assertthat::assert_that(
+    nrow(ed_event_dt) == nrow(adhb_event_dt),
+    !anyDuplicated(ed_event_dt$pms_unique_identifier)
+  )  
   return(ed_event_dt)
   
 }

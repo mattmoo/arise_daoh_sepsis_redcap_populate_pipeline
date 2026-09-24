@@ -192,6 +192,12 @@ generate_analysis_dt <- function(eligible_event_dt,
     fifelse(first_avpu == "Alert", "Alert", "Not alert"),
     levels = c("Alert", "Not alert"))]
   
+  assertthat::assert_that(
+    nrow(analysis_dt) == nrow(eligible_event_dt),
+    !anyDuplicated(analysis_dt$pms_unique_identifier)
+  )
+  
+  
   col_groups <- list(
     ids = c("pms_unique_identifier", "PRIM_HCU", "index_event_id", "record_id",
             "nmds_event_id", "nnpac_event_id"),

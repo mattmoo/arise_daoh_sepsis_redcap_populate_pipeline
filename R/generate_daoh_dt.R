@@ -12,6 +12,14 @@ generate_daoh_dt <- function(index_event_dt,
                              hospitalisation_dt,
                              daoh_limits) {
   
+  # Index events carry the supplied NHI; hospitalisations and DOD are keyed on
+  # the MoH master NHI. They coincide in the current extract. If a merged NHI
+  # ever appears among index events, DAOH would silently miss its admissions.
+  unlinked <- setdiff(index_event_dt$PRIM_HCU, moh_patient_dt$PRIM_HCU)
+  if (length(unlinked))
+    stop(length(unlinked), " index event NHI(s) not found as a master NHI; ",
+         "map supplied_nhi to PRIM_HCU via moh_cohort_dt before computing DAOH")
+  
   index_event_dt = as.data.table(index_event_dt)
   
   consolidated_hospitalisation_dt = daohtools::consolidate.events(
