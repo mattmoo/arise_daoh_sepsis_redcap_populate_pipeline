@@ -566,13 +566,6 @@ tar_plan(
   ),
   
   tar_target(
-    arise_eligibility_eulerr_fit,
-    generate_arise_eligibility_dt(
-      ed_event_dt
-    )
-  ),
-  
-  tar_target(
     redcap_export_dt,
     generate_redcap_export_dt(
       ed_event_dt,
@@ -580,14 +573,6 @@ tar_plan(
     )
   ),
   
-  tar_target(
-    summary_variables_dt,
-    generate_summary_variables_dt(
-      eligible_event_dt = ed_event_dt[pms_unique_identifier %in% arise_eligibility_dt[eligible == TRUE, pms_unique_identifier]],
-      priority_ethnicity_lookup_dt,
-      audit_diags_lookup_dt
-    )
-  ),
   
   tar_target(
     comorbidity_score_dt,
@@ -654,7 +639,8 @@ tar_plan(
   tar_target(
     initial_criteria_obj,
     cf_criteria() |>
-      exclude(~ not_transfer == FALSE, label = "Transfer",  category = "Pre-screen") |>
+      exclude(~ has_nmds_record == FALSE, label = "Not admitted (no NMDS event)", category = "Pre-screen") |>
+      exclude(~ not_transfer == FALSE,    label = "Transfer",                     category = "Pre-screen") |>
       exclude(~ has_lactate == FALSE, label = "No lactate recorded",  category = "Pre-screen") |>
       exclude(~ high_lactate == FALSE, label = "All lactate within 6 hours <2mmol/L",  category = "Pre-screen") |>
       exclude(~ infection_code == FALSE, label = "Admission has no infection diagnostic code",  category = "Pre-screen") |>

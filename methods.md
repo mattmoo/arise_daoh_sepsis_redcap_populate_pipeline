@@ -117,9 +117,8 @@ the full cohort this excludes tau up to [TODO: 0.30], and in the ARISE-eligible
 subset tau up to [TODO: 0.15].
 
 Because DAOH is heavily tied at zero, the quantile regression objective function
-is degenerate. The outcome is therefore dithered by adding symmetric uniform
-noise before fitting, following Machado and Santos Silva. [TODO: state the
-dither width and whether estimates are averaged over multiple dithers]
+is degenerate. The outcome is dithered by adding U(0, 1) noise before fitting,
+following Machado and Santos Silva; a single dither is used per model.
 
 In unadjusted models a quantile contrast is the difference between the groups'
 τ-th quantiles of DAOH. In adjusted models it is the difference in the
@@ -211,6 +210,9 @@ another: they share a comparator computed from all groups, so the deviation for
 the largest group is close to zero by construction and the estimates are
 correlated across groups. They are interpreted as each group's position relative
 to the population, not as a set of independent pairwise comparisons.
+
+Mortality at 30 and 90 days includes deaths up to and including day 30 and day
+90 after ED presentation (day 0); the DAOH90 window spans days 0 to 89.
 
 ### Uncertainty
 

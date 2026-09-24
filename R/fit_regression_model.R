@@ -232,7 +232,7 @@ fit_regression_model <- function(spec,
     if (spec$model_type == "rq" && dither_method == "rq")
       data.table::set(dat, j = outcome,
                       value = quantreg::dither(dat[[outcome]],
-                                               type = "symmetric",
+                                               type = "right",
                                                value = dither_value))
     
     fit_i <- tryCatch(fit_once(dat), error = function(e) e)

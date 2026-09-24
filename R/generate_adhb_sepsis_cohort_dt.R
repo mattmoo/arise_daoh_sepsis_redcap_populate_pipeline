@@ -15,6 +15,9 @@ generate_adhb_sepsis_cohort_dt <- function(adhb_sepsis_cohort1_raw_dt,
                                 adhb_sepsis_cohort2_raw_dt,
                                 all.x = TRUE)[NHI != '']
   
+  stopifnot(nrow(adhb_sepsis_cohort_dt) ==
+              nrow(adhb_sepsis_cohort1_raw_dt[NHI != '']))
+  
   diag_levels_dt = adhb_sepsis_cohort_dt[, .N, by = .(Diag.Code, Diag.Desc)][order(Diag.Code)]
   
   adhb_sepsis_cohort_dt[, Diag.Desc := factor(Diag.Desc, levels = diag_levels_dt$Diag.Desc)]
