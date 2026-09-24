@@ -209,11 +209,12 @@ fit_regression_model <- function(spec,
   warn_msgs <- character(0)
   
   fit_once <- function(dat) {
+    call <- switch(spec$model_type,
+                   lm = bquote(stats::lm(.(f), data = dat)),
+                   rq = bquote(quantreg::rq(.(f), tau = .(spec$tau), data = dat)),
+                   stop("Unknown model_type: ", spec$model_type))
     withCallingHandlers(
-      switch(spec$model_type,
-             lm = stats::lm(f, data = dat),
-             rq = quantreg::rq(f, tau = spec$tau, data = dat),
-             stop("Unknown model_type: ", spec$model_type)),
+      eval(call),
       warning = function(w) {
         warn_msgs <<- c(warn_msgs, conditionMessage(w))
         invokeRestart("muffleWarning")

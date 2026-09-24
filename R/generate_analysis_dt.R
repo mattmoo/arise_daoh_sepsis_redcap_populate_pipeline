@@ -182,6 +182,16 @@ generate_analysis_dt <- function(eligible_event_dt,
                               "Māori", "non-Māori"),
                       levels = c("non-Māori", "Māori"))]
   
+  # Model-ready versions: sparse levels collapsed, non-response as missing.
+  # Originals are retained for reporting.
+  analysis_dt[, triage_category_model := droplevels(
+    forcats::fct_collapse(
+      forcats::fct_recode(triage_category, NULL = "Not Available"),
+      `3-4` = c("3", "4")))]
+  analysis_dt[, first_avpu_alert := factor(
+    fifelse(first_avpu == "Alert", "Alert", "Not alert"),
+    levels = c("Alert", "Not alert"))]
+  
   col_groups <- list(
     ids = c("pms_unique_identifier", "PRIM_HCU", "index_event_id", "record_id",
             "nmds_event_id", "nnpac_event_id"),
@@ -204,10 +214,11 @@ generate_analysis_dt <- function(eligible_event_dt,
       # "ed_discharge_datetime"
     ), 
     
-    severity = c("m3_score", "snomed_cpc", "triage_category", "news", "highest_ews",
-                 "time_highest_ews", "first_sbp", "first_dbp", "lowest_sbp",
-                 "first_heart_rate", "first_resp_rate", "first_temperature",
-                 "first_spo2", "first_spo2_on_oxygen", "first_avpu", "first_gcs",
+    severity = c("m3_score", "snomed_cpc", "triage_category", "triage_category_model",
+                 "news", "highest_ews", "time_highest_ews", "first_sbp", "first_dbp",
+                 "lowest_sbp", "first_heart_rate", "first_resp_rate",
+                 "first_temperature", "first_spo2", "first_spo2_on_oxygen",
+                 "first_avpu", "first_avpu_alert", "first_gcs",
                  "first_lactate", "highest_lactate_6h_reading"),
     
     infection = c("infection_desc", "primary_infection_site",

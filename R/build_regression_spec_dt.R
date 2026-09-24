@@ -46,9 +46,9 @@ build_regression_spec_dt <- function(
     socio_comorb  = c("nzdep2023_int", "m3_score"),
     severity_news = "news",
     severity_comp = c("first_sbp", "first_heart_rate", "first_resp_rate",
-                      "first_temperature", "first_spo2", "first_avpu"),
+                      "first_temperature", "first_spo2", "first_avpu_alert"),
     perfusion     = "first_lactate",
-    care_process  = "triage_category"
+    care_process  = "triage_category_model"
   )
 
   ladder <- list(

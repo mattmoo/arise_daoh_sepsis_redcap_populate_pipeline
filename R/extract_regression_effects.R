@@ -122,23 +122,14 @@ extract_regression_effects <- function(model_list,
 
     } else {
 
-      # Group sizes from the analysed sample, so the weights match the complete
-      # cases actually fitted rather than the whole population.
-      mf <- stats::model.frame(model_list$fit)
-      g  <- factor(mf[[exposure]])
-      w  <- as.numeric(table(g)) / length(g)
-
-      # marginaleffects passes the estimate table to the hypothesis function
-      # and propagates uncertainty through it, so the correlation between each
-      # group mean and the shared population average is handled.
-      dev_from_population <- function(x) {
-        e <- x$estimate
-        data.frame(term = paste0(levels(g), " vs population"),
-                   estimate = e - sum(w * e))
-      }
-
-      args$by <- exposure
-      args$hypothesis <- dev_from_population
+      # Each level's g-computed mean minus the size-weighted population mean
+      tab <- prop.table(table(factor(stats::model.frame(model_list$fit)[[exposure]])))
+      H   <- diag(length(tab)) - matrix(tab, length(tab), length(tab))
+      colnames(H) <- paste(names(tab), "vs population")
+      
+      args$variables  <- exposure
+      args$by         <- exposure
+      args$hypothesis <- H
       x <- do.call(marginaleffects::avg_predictions, args)
     }
 

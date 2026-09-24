@@ -155,6 +155,8 @@ tar_plan(
       first_gcs                      = "First Glasgow Coma Scale in ED",
       first_lactate                  = "First lactate in ED",
       highest_lactate_6h_reading     = "Highest lactate within 6 hours",
+      triage_category_model          = "Triage category (3 and 4 combined)",
+      first_avpu_alert               = "First AVPU in ED (alert vs not alert)",
       
       # infection
       infection_desc                 = "Infection description",

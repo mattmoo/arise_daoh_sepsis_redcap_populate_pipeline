@@ -70,18 +70,13 @@ build_regression_ame_dt <- function(model_list,
     res <- tryCatch({
       if (v %chin% population_reference && is.factor(mf[[v]])) {
 
-        # Deviation of each group's standardised mean from the population
-        # average, weighted by group size so a stratum of a dozen patients does
-        # not carry the same weight as one of a hundred and thirty-six.
-        g <- factor(mf[[v]])
-        w <- as.numeric(table(g)) / length(g)
-        dev_from_population <- function(x) {
-          e <- x$estimate
-          data.frame(term = paste0(levels(g), " vs population"),
-                     estimate = e - sum(w * e))
-        }
-        args$by <- v
-        args$hypothesis <- dev_from_population
+        tab <- prop.table(table(factor(mf[[v]])))
+        H   <- diag(length(tab)) - matrix(tab, length(tab), length(tab))
+        colnames(H) <- paste(names(tab), "vs population")
+        
+        args$variables  <- v
+        args$by         <- v
+        args$hypothesis <- H
         do.call(marginaleffects::avg_predictions, args)
 
       } else if (is.factor(mf[[v]]) || is.logical(mf[[v]]) ||
