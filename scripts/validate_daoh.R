@@ -16,8 +16,8 @@
 #
 #   source("scripts/validate_daoh.R")
 #   daoh_sanity_check()             # run this first
-#   validate_daoh(1987)             # by index_event_id
-#   validate_daoh(pms = "6183329")  # or by PMS identifier
+#   validate_daoh(1)                   # by index_event_id
+#   validate_daoh(pms = "<PMS id>")    # or by PMS identifier
 # =============================================================================
 
 library(data.table)

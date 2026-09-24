@@ -25,7 +25,8 @@ build_summary_table <- function(dt,
                                 continuous_vars = character(),
                                 digits = NULL,
                                 simulate_fisher = FALSE,
-                                pvalue_digits = 3L) {
+                                pvalue_digits = 3L,
+                                no_p_by = "arise_eligible") {
 
   stopifnot(length(by_var) == 1L)
 
@@ -61,17 +62,23 @@ build_summary_table <- function(dt,
     missing = "ifany",
     missing_text = "Missing"
   ) |>
-    gtsummary::add_n() |>
-    gtsummary::add_p(
+    gtsummary::add_n()
+  
+  # Groups defined by eligibility criteria differ by construction on those
+  # criteria, so their p-values are not findings (see methods).
+  if (!by_var %in% no_p_by)
+    tbl <- gtsummary::add_p(
+      tbl,
       test = list(
         gtsummary::all_continuous()  ~ cont_test,
         gtsummary::all_categorical() ~ "fisher.test"
       ),
       test.args = if (simulate_fisher)
         gtsummary::all_categorical() ~ list(simulate.p.value = TRUE, B = 1e5)
-        else NULL,
-      pvalue_fun = \(x) gtsummary::style_pvalue(x, digits = pvalue_digits)
-    ) |>
+      else NULL,
+      pvalue_fun = \(x) gtsummary::style_pvalue(x, digits = pvalue_digits))
+  
+  tbl |>
     gtsummary::add_overall(last = TRUE, col_label = "**Total**  \nN = {N}") |>
     gtsummary::modify_header(
       gtsummary::all_stat_cols(FALSE) ~ "**{level}**  \nN = {n}") |>
@@ -80,6 +87,7 @@ build_summary_table <- function(dt,
         paste0("**", if (!is.null(labels[[by_var]])) labels[[by_var]] else by_var,
                "**")) |>
     gtsummary::bold_labels()
+
 
   tbl
 }

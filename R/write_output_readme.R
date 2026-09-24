@@ -104,9 +104,7 @@ output_readme_caveats <- function(kind, population_slug = NULL) {
           "no lookback period, so it under-counts pre-existing conditions and",
           "is not interpreted as a measure of multimorbidity."),
     paste("Deprivation was assigned at domicile level rather than SA1, which",
-          "introduces misclassification against NZDep2023."),
-    paste("ED disposition and time to clinician assessment were not available",
-          "in the extract.")
+          "introduces misclassification against NZDep2023.")
   )
 
   by_kind <- switch(
@@ -128,8 +126,10 @@ output_readme_caveats <- function(kind, population_slug = NULL) {
             "bootstrap. Intervals elsewhere on the tau grid use a normal",
             "approximation and indicate the shape of the effect rather than",
             "supporting inference."),
-      paste("A quantile contrast is a difference between group quantiles. It",
-            "is not the effect on patients who sit at that quantile."),
+      paste("A quantile contrast is a difference in the conditional quantile of",
+            "DAOH, holding covariates fixed. It is not the difference between",
+            "the groups' overall quantiles, nor the effect on patients who sit",
+            "at that quantile."),
       paste("Hollow points and daggered estimates mark a non-unique quantile",
             "regression solution: an interval of coefficients fits equally",
             "well and the reported value is one of them."),

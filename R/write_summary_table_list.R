@@ -40,7 +40,7 @@ write_summary_table_list <- function(table_list, path, labels = NULL,
   if (is.na(family_label)) family_label <- table_list$table_family
 
   caption <- sprintf("%s: %s, by %s", family_label,
-                     table_list$population_label, tolower(by_label))
+                     table_list$population_label, lower_first(by_label))
 
   write_table(
     table    = table_list$table,

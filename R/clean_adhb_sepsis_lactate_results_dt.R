@@ -27,6 +27,13 @@ clean_adhb_sepsis_lactate_results_dt <- function(adhb_sepsis_lactate_results_raw
   adhb_sepsis_lactate_results_dt[, Result_raw := Result]
   adhb_sepsis_lactate_results_dt[, Result_numeric_string := stringr::str_remove(Result, '-( )*mmol/(l|L)?')]
   adhb_sepsis_lactate_results_dt[Result_numeric_string == '<1.9', Result_numeric := 1]
+  
+  # NOTE: '<4.0' is uninformative against the 2 mmol/L eligibility threshold.
+  # Recoding it to 3 lets it pass that threshold. Checked 2026-09-24: no
+  # analysed event depends on a '<4.0' result (none is a first lactate, and
+  # every analysed event has an exact result >= 2), so left as is to keep the
+  # REDCap export stable. Revisit if the source data change.
+  
   adhb_sepsis_lactate_results_dt[Result_numeric_string == '<4.0', Result_numeric := 3]
   adhb_sepsis_lactate_results_dt[Result_numeric_string == '>4.0', Result_numeric := 5]
   adhb_sepsis_lactate_results_dt[Result_numeric_string == '>30.0', Result_numeric := 30]

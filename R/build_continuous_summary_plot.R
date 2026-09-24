@@ -21,9 +21,8 @@ build_continuous_summary_plot <- function(dt,
 
   d <- data.table::as.data.table(dt)
 
-  vars <- intersect(vars, names(d))
-  if (!length(vars))
-    stop("build_continuous_summary_plot: no requested variables in data")
+  missing_vars <- setdiff(vars, names(d))
+  if (length(missing_vars)) stop("Not in data: ", paste(missing_vars, collapse = ", "))
 
   lab <- function(v) if (!is.null(labels[[v]])) labels[[v]] else v
 

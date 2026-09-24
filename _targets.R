@@ -1,5 +1,7 @@
 # Needed for Java to read input XLSX
 options(java.parameters = c("-XX:+UseConcMarkSweepGC", "-Xmx16192m"))
+Sys.setenv(TZ = "Pacific/Auckland")   # all timestamps are NZ local; don't depend on the machine
+Sys.setlocale("LC_TIME", "C")         # English month abbreviations for NNPAC's %b
 
 library(targets)
 library(tarchetypes)
@@ -50,8 +52,8 @@ package_list = c(
   "modelsummary"
   # "xlsx"
 )
-new.packages <- package_list[!(package_list %in% installed.packages()[,"Package"])]
-if(length(new.packages)) install.packages(new.packages)
+# new.packages <- package_list[!(package_list %in% installed.packages()[,"Package"])]
+# if(length(new.packages)) install.packages(new.packages)
 
 tar_option_set(
   # use_crew = TRUE,
@@ -125,6 +127,7 @@ tar_plan(
       nzdep2023_quintile             = "NZDep2023 quintile",
       nzdep2023_int                  = "NZDep2023 decile",
       nzdep2023_quintile_int       = "NZDep2023 quintile",
+      maori                          = "Ethnicity (Māori/non-Māori)",
       
       # hospital event
       admit_datetime                 = "Hospital admission date/time",
@@ -286,7 +289,8 @@ tar_plan(
   # Codes from the audit spreadsheet
   tar_target(
     audit_diags_lookup_path,
-    file.path(lookup_directory_path, "audit_diags.csv")
+    file.path(lookup_directory_path, "audit_diags.csv"),
+    format = "file"
   ),
   tar_target(
     audit_diags_lookup_dt,
@@ -308,22 +312,27 @@ tar_plan(
   tar_target(
     event_end_type_lookup_xls_path,
     file.path(lookup_directory_path, "copy_of_event-end-type_01.xls"),
+    format = "file"
   ),
   tar_target(
     admission_type_lookup_xls_path,
     file.path(lookup_directory_path, "admission-type.xls"),
+    format = "file"
   ),
   tar_target(
     admission_source_lookup_xls_path,
     file.path(lookup_directory_path, "admission-source.xls"),
+    format = "file"
   ),
   tar_target(
     hlthspec_lookup_xls_path,
     file.path(lookup_directory_path, "health_specialty_code_table_july_2020.xls"),
+    format = "file"
   ),
   tar_target(
     nzdep2023_dom_lookup_txt_path,
     file.path(lookup_directory_path, "NZDep2023_WgtAvDom-text.txt"),
+    format = "file"
   ),
   tar_target(
     priority_ethnicity_lookup_dt,
@@ -977,6 +986,7 @@ tar_plan(
     write_summary_table_list(
       table_demographics_gt_list,
       table_output_directory_path,
+      label_list,
       width_in = table_docx_width_in,
       font_size = table_docx_font_size,
       pr_section = landscape_ft_prop_section
@@ -1411,7 +1421,7 @@ tar_plan(
       path       = file.path(table_output_directory_path,
                              regression_ladder_table_list$population_slug),
       caption    = paste0("Difference in DAOH90 by ",
-                          tolower(label_list[[regression_ladder_table_list$by_var]]),
+                          lower_first(label_list[[regression_ladder_table_list$by_var]]),
                           ": ", population_label_list[[
                             regression_ladder_table_list$population_slug]]),
       width_in   = table_docx_width_in,
@@ -1954,7 +1964,7 @@ tar_plan(
   
   # ---- variable sets --------------------------------------------------------
   tar_target(plot_demographics_continuous_vars,
-             c("age_years", "nzdep_decile", "m3_score")),
+             c("age_years", "m3_score")),
   
   tar_target(plot_demographics_categorical_vars,
              c("gender", "priority.ethnicity.desc.L1", "arise_eligible")),
@@ -2293,25 +2303,25 @@ tar_plan(
   tar_target(
     arise_sepsis_xlsx_file,
     {
-      stamp <- format(Sys.time(), "%Y%m%d-%H%M")
-      hash  <- substr(digest::digest(analysis_dt), 1, 8)
-      path  <- file.path(output_directory_path,
-                         sprintf("arise_sepsis_%s_%s.xlsx", stamp, hash))
+      path <- file.path(output_directory_path,
+                        sprintf("arise_sepsis_%s_%s.xlsx",
+                                format(Sys.time(), "%Y%m%d-%H%M"), analysis_data_hash))
       writexl::write_xlsx(analysis_dt, path = path)
       path
-    }
+    },
+    format = "file"
   ),
   
   tar_target(
     arise_sepsis_eligibility_xlsx_file,
     {
-      stamp <- format(Sys.time(), "%Y%m%d-%H%M")
-      hash  <- substr(digest::digest(analysis_dt), 1, 8)
-      path  <- file.path(output_directory_path,
-                         sprintf("arise_sepsis_eligibility_%s_%s.xlsx", stamp, hash))
+      path <- file.path(output_directory_path,
+                        sprintf("arise_sepsis_eligibility_%s_%s.xlsx",
+                                format(Sys.time(), "%Y%m%d-%H%M"), analysis_data_hash))
       writexl::write_xlsx(eligibility_dt, path = path)
       path
-    }
+    },
+    format = "file"
   ),
   
   tar_target(
@@ -2336,14 +2346,12 @@ tar_plan(
           table_infection_docx_file_list, table_treatment_docx_file_list,
           table_outcome_docx_file_list, daoh_boot_docx_file_list),
         value = TRUE, fixed = TRUE),
-      population_label = table_population_dt$population_label,
-      n = nrow(table_population_data_list[[
-        match(table_population_dt$population_slug,
-              table_population_dt$population_slug)]]),
+      population_label = table_population_dt$population_label,      
+      n = nrow(table_population_data_list),
       data_hash = analysis_data_hash,
       caveats = output_readme_caveats(
         "tables", table_population_dt$population_slug)),
-    pattern = map(table_population_dt),
+    pattern = map(table_population_dt, table_population_data_list),
     format = "file"
   ),
   

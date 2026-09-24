@@ -121,9 +121,12 @@ is degenerate. The outcome is therefore dithered by adding symmetric uniform
 noise before fitting, following Machado and Santos Silva. [TODO: state the
 dither width and whether estimates are averaged over multiple dithers]
 
-A quantile contrast is a difference between the group-specific quantiles of the
-outcome distribution. It is not the effect of the exposure on patients who
-happen to sit at that quantile, and is not interpreted as such.
+In unadjusted models a quantile contrast is the difference between the groups'
+τ-th quantiles of DAOH. In adjusted models it is the difference in the
+conditional τ-th quantile, holding covariates fixed, averaged over the analysed
+sample. Because quantiles do not average, this is not the difference between the
+groups' unconditional quantiles. Neither is the effect of the exposure on
+patients who happen to sit at that quantile, and neither is interpreted as such.
 
 ### Covariate ladder and reporting groups
 

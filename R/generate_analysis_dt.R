@@ -166,7 +166,7 @@ generate_analysis_dt <- function(eligible_event_dt,
     first_antibiotic, min = 8, other_level = "Other Antibiotic - See Comments"
   )]
   
-  analysis_dt[, mort_in_hospital := nmds_event_end_type == "DD"]
+  analysis_dt[, mort_in_hospital := nmds_event_end_type %in% c("DD", "ED")]
   
   analysis_dt[, age_years := round(as.numeric(difftime(ed_presentation_datetime, date_of_birth, unit = 'days'))/365.25)]
   analysis_dt[, date_of_birth := NULL]
