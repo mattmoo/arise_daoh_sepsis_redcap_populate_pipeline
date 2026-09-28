@@ -33,9 +33,15 @@ boot_daoh <- function(x, R = 10000, conf = 0.95, min_n = 20L) {
         statistic = names(bo$t0)[j], n = length(x), estimate = est,
         lower = NA_real_, upper = NA_real_, estimable = FALSE))
     
-    ci <- boot::boot.ci(bo, index = j, type = "bca", conf = conf)
+    extreme <- FALSE
+    ci <- withCallingHandlers(
+      boot::boot.ci(bo, index = j, type = "bca", conf = conf),
+      warning = function(w) if (grepl("extreme order", conditionMessage(w))) {
+        extreme <<- TRUE; invokeRestart("muffleWarning") })
     data.table::data.table(
       statistic = names(bo$t0)[j], n = length(x), estimate = est,
-      lower = ci$bca[4], upper = ci$bca[5], estimable = TRUE)
+      lower = if (extreme) NA_real_ else ci$bca[4],
+      upper = if (extreme) NA_real_ else ci$bca[5],
+      estimable = !extreme)
   }))
 }

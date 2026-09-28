@@ -21,13 +21,9 @@ regression_tau_caption <- function(
 
   txt <- paste(
     interval_note,
-    "Hollow points indicate a non-unique quantile regression solution.",
     "Dashed line and shaded band are the linear model estimate of the",
     "difference in means.",
-    "Rug marks at the foot are taus that could not be fitted, at or below the",
-    "proportion of patients with zero days at home.",
-    "A quantile contrast is a difference between group quantiles, not the",
-    "effect on patients at that quantile.")
+    "A quantile contrast is a difference in the conditional quantile of DAOH, holding covariates fixed; it is not the effect on patients at that quantile.")
 
   if (!is.null(extra)) txt <- paste(txt, extra)
 

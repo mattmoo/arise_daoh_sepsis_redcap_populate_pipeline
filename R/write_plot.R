@@ -95,6 +95,20 @@ write_plot <- function(plot,
     }
   }
   
+  # Wrap long captions to the output width, and grow the canvas by the lines
+  # added so the panels are not squeezed and the caption is not clipped.
+  cap <- if (!inherits(plot, "patchwork")) plot$labels$caption else NULL
+  if (!is.null(cap) && nzchar(cap)) {
+    cap_pt <- tryCatch(
+      ggplot2::calc_element("plot.caption", ggplot2::theme_get() + plot$theme)$size,
+      error = function(e) NULL)
+    if (!is.numeric(cap_pt)) cap_pt <- 9
+    chars   <- floor(width_in * 72 / (cap_pt * 0.5)) - 4   # ~0.5 em per character
+    wrapped <- strwrap(cap, width = chars)
+    plot    <- plot + ggplot2::labs(caption = paste(wrapped, collapse = "\n"))
+    height_in <- height_in + (length(wrapped) - 1) * cap_pt * 1.25 / 72
+  }
+  
   # Add underlay geom
   if (!is.null(underlay_geom)) {
     if (inherits(plot, "patchwork")) {

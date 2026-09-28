@@ -1439,27 +1439,6 @@ tar_plan(
   ),
   
   tar_target(
-    regression_group_plot_pdf_file_list,
-    write_summary_plot_list(
-      plot_list   = regression_group_plot_list,
-      path        = plot_output_directory_path,
-      width_in    = plot_width_in,
-      plot_theme  = plot_theme_categorical,
-      plot_scales = c(
-        list(regression_tau_scale,
-             regression_effect_scale,
-             regression_facet(scales = "fixed"),
-             regression_shape_scale,
-             regression_tau_caption_labs),
-        if (regression_group_plot_list$by_var == "priority.ethnicity.desc.L1")
-          regression_ethnicity_contrast_scale()
-        else regression_arise_contrast_scale()),
-      device_ext  = plot_device_ext),
-    pattern = map(regression_group_plot_list),
-    format = "file"
-  ),
-  
-  tar_target(
     regression_single_plot_pdf_file_list,
     write_summary_plot_list(
       plot_list   = regression_single_plot_list,
@@ -1468,15 +1447,44 @@ tar_plan(
       plot_theme  = plot_theme_categorical,
       plot_scales = c(
         list(regression_tau_scale,
-             regression_effect_scale,
              regression_facet(scales = "fixed"),
-             regression_shape_scale,
              regression_tau_caption_labs),
         if (regression_single_plot_list$by_var == "priority.ethnicity.desc.L1")
-          regression_ethnicity_contrast_scale()
-        else regression_arise_contrast_scale()),
+          c(regression_ethnicity_contrast_scale(
+            name = label_list[["priority.ethnicity.desc.L1"]]),
+            list(regression_effect_y_scale(
+              "Difference in DAOH90 from population average (days)")))
+        else
+          c(regression_arise_contrast_scale(),
+            list(regression_effect_y_scale(
+              "Difference in DAOH90, eligible vs not (days)")))),
       device_ext  = plot_device_ext),
     pattern = map(regression_single_plot_list),
+    format = "file"
+  ),
+  
+  tar_target(
+    regression_group_plot_pdf_file_list,
+    write_summary_plot_list(
+      plot_list   = regression_group_plot_list,
+      path        = plot_output_directory_path,
+      width_in    = plot_width_in,
+      plot_theme  = plot_theme_categorical,
+      plot_scales = c(
+        list(regression_tau_scale,
+             regression_facet(scales = "fixed"),
+             regression_tau_caption_labs),
+        if (regression_group_plot_list$by_var == "priority.ethnicity.desc.L1")
+          c(regression_ethnicity_contrast_scale(
+            name = label_list[["priority.ethnicity.desc.L1"]]),
+            list(regression_effect_y_scale(
+              "Difference in DAOH90 from population average (days)")))
+        else
+          c(regression_arise_contrast_scale(),
+            list(regression_effect_y_scale(
+              "Difference in DAOH90, eligible vs not (days)")))),
+      device_ext  = plot_device_ext),
+    pattern = map(regression_group_plot_list),
     format = "file"
   ),
   
@@ -1553,6 +1561,7 @@ tar_plan(
            estimator_label  = regression_coef_spec_dt$estimator_label),
       build_regression_coef_table(
         fit_list             = regression_fit_list,
+        vcov_list            = regression_vcov_list,
         population_slug      = regression_coef_spec_dt$population_slug,
         model_type           = regression_coef_spec_dt$model_type,
         tau                  = regression_coef_spec_dt$tau,
@@ -1624,7 +1633,7 @@ tar_plan(
         ggplot2::scale_x_continuous(name = "Effect (days of DAOH\u2089\u2080)"),
         ggplot2::scale_y_discrete(name = NULL),
         ggplot2::scale_colour_brewer(palette = "Dark2", name = "Model"),
-        regression_shape_scale,
+        # regression_shape_scale,
         ggplot2::labs(caption = paste(
           "Average marginal effects with 95% delta-method intervals from a",
           "bootstrapped covariance matrix, standardised over the observed",
@@ -1632,8 +1641,7 @@ tar_plan(
           "per unit; the comorbidity spline is collapsed to a single average",
           "slope. Ethnicity is expressed relative to the population average.",
           "Panels are not commensurable: the first is an effect on the mean,",
-          "the others on the stated percentile. Hollow points indicate a",
-          "non-unique quantile regression solution."))),
+          "the others on the stated percentile."))),
       device_ext  = plot_device_ext),
     pattern = map(regression_ame_forest_plot_list),
     format = "file"
@@ -1680,7 +1688,7 @@ tar_plan(
         ggplot2::scale_x_continuous(name = "Coefficient (days of DAOH\u2089\u2080)"),
         ggplot2::scale_y_discrete(name = NULL),
         ggplot2::scale_colour_brewer(palette = "Dark2", name = "Model"),
-        regression_shape_scale,
+        # regression_shape_scale,
         ggplot2::labs(caption = paste(
           "Points are model coefficients with 95% confidence intervals from a",
           "bootstrapped covariance matrix, using a normal approximation on the",
@@ -1688,8 +1696,7 @@ tar_plan(
           "difference in mean DAOH90, the others differences in the stated",
           "percentile. Ethnicity coefficients are relative to the reference",
           "level, not to the population average as in the marginal effects",
-          "tables. Hollow points indicate a non-unique quantile regression",
-          "solution."))),
+          "tables."))),
       device_ext  = plot_device_ext),
     pattern = map(regression_coef_forest_plot_list),
     format = "file"

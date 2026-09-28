@@ -102,8 +102,7 @@ build_regression_tau_plot <- function(effect_dt,
     # region and the plotted value is one vertex of an interval of solutions.
     ggplot2::geom_point(
       data = rq_d[estimable == TRUE & tau_role == "primary"],
-      ggplot2::aes(shape = as.character(nonunique_solution)),
-      size = 1.8, stroke = 0.6) +
+      size = 1.8) +
     ggplot2::geom_rug(
       data = unique(rq_d[estimable == FALSE],
                     by = c("population_slug", "covariate_set", "tau")),

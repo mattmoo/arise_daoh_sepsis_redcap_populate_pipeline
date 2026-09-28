@@ -39,6 +39,7 @@
 #'
 #' @return list with `models`, `flextable` and the spec fields
 build_regression_coef_table <- function(fit_list,
+                                        vcov_list,
                                         population_slug,
                                         model_type = "rq",
                                         tau = NULL,
@@ -69,6 +70,14 @@ build_regression_coef_table <- function(fit_list,
   ord <- order(match(vapply(fits, `[[`, "", "covariate_set"), covariate_sets))
   fits <- fits[ord]
   
+  # Same covariance as the forest plots: bootstrap for rq, HC3 for lm
+  V <- lapply(fits, function(m) {
+    v <- Filter(\(x) identical(x$spec_id, m$spec_id), vcov_list)
+    if (!length(v) || !isTRUE(v[[1]]$available))
+      stop("no usable covariance for ", m$spec_id)
+    v[[1]]$vcov
+  })
+  
   nm <- vapply(fits, function(m) {
     cs <- m$covariate_set
     if (!is.null(covariate_set_labels[[cs]]))
@@ -92,7 +101,8 @@ build_regression_coef_table <- function(fit_list,
   n_used <- vapply(fits, `[[`, 0, "n")
   
   note <- paste0(
-    "Coefficients with ", round(conf_level * 100), "% confidence intervals. ",
+    "Coefficients with ", round(conf_level * 100), "% confidence intervals from ",
+    if (model_type == "rq") "a bootstrapped covariance matrix. " else "HC3 standard errors. ",
     if (model_type == "rq")
       paste0("Quantile regression at tau = ", format(tau, nsmall = 2),
              "; coefficients are differences in the ",
@@ -110,6 +120,7 @@ build_regression_coef_table <- function(fit_list,
   
   ft <- modelsummary::modelsummary(
     models,
+    vcov = stats::setNames(V, nm),
     output = "flextable",
     statistic = "conf.int",
     conf_level = conf_level,
