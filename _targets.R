@@ -1114,7 +1114,8 @@ tar_plan(
       exposures    = regression_exposure_dt$exposure,
       taus_primary = regression_tau_primary,
       taus_grid    = regression_tau_grid,
-      populations  = table_population_dt$population_slug
+      populations  = table_population_dt$population_slug,
+      arise_max_rung = c("m0", "m1", "m2", "m3_news", "m4")
     )[m3_form %chin% c("none", regression_m3_form)]
   ),
   
@@ -1414,6 +1415,40 @@ tar_plan(
       font_size  = table_docx_font_size,
       pr_section = landscape_ft_prop_section),
     pattern = map(regression_ladder_table_list),
+    format = "file"
+  ),
+  
+  tar_target(
+    regression_ame_table_list,
+    c(list(table_family     = paste0("marginal_effects_", regression_coef_spec_dt$slug),
+           population_slug  = regression_coef_spec_dt$population_slug,
+           population_label = regression_coef_spec_dt$population_label,
+           estimator_label  = regression_coef_spec_dt$estimator_label),
+      build_regression_ame_table(
+        ame_dt               = regression_ame_dt,
+        population_slug      = regression_coef_spec_dt$population_slug,
+        model_type           = regression_coef_spec_dt$model_type,
+        tau                  = regression_coef_spec_dt$tau,
+        covariate_sets       = regression_coef_rungs_list,
+        covariate_set_labels = covariate_set_label_list)),
+    pattern = map(regression_coef_spec_dt, regression_coef_rungs_list),
+    iteration = "list"
+  ),
+  
+  tar_target(
+    regression_ame_table_docx_file_list,
+    write_table(
+      table      = regression_ame_table_list$flextable,
+      filename   = paste0(regression_ame_table_list$table_family, ".docx"),
+      path       = file.path(table_output_directory_path,
+                             regression_ame_table_list$population_slug),
+      caption    = paste0("Average marginal effects across the covariate ladder: ",
+                          regression_ame_table_list$population_label, ", ",
+                          regression_ame_table_list$estimator_label),
+      width_in   = table_docx_width_in,
+      font_size  = table_docx_font_size,
+      pr_section = landscape_ft_prop_section),
+    pattern = map(regression_ame_table_list),
     format = "file"
   ),
   

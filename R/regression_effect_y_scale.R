@@ -19,8 +19,6 @@
 #' @param by break interval in days; NULL lets ggplot choose
 #' @param expand axis expansion
 regression_effect_y_scale <- function(name = "Difference in DAOH, days",
-                                      limits = NULL,
-                                      breaks = NULL,
                                       expand = ggplot2::expansion(c(0.05, 0.05)),
                                       ...) {
 
@@ -37,8 +35,6 @@ regression_effect_y_scale <- function(name = "Difference in DAOH, days",
 
   ggplot2::scale_y_continuous(
     name   = name,
-    breaks = breaks,
-    limits = limits,
     expand = expand,
     ...
   )

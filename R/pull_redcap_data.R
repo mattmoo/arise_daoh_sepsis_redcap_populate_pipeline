@@ -16,6 +16,7 @@ pull_redcap_data <- function(redcap_uri, token,
   dt = as.data.table(REDCapR::redcap_read_oneshot(
     redcap_uri = redcap_uri,
     token = token,
+    fields     = "record_id",
     forms = c('visit_or_admission', 'arise_criteria'),
     locale = readr::locale(tz = "Pacific/Auckland")
   )$data)
