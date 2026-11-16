@@ -23,7 +23,8 @@ generate_adhb_event_lactate_results_dt <- function(adhb_event_dt,
     NHI,
     PMS_UNIQUE_IDENTIFIER = i.PMS_UNIQUE_IDENTIFIER,
     Result = x.Result,
-    Sample_time = x.SPECIMENCOLLECTEDDATE
+    Sample_time = x.SPECIMENCOLLECTEDDATE,
+    t_minutes = difftime(x.SPECIMENCOLLECTEDDATE, Admit.Date.Time, unit = "mins")
   ), # Non equi join:
   on = .(
     NHI,

@@ -9,83 +9,120 @@ library(data.table)
 # dependencies build automatically.
 # =============================================================================
 
-tar_make(names = tidyselect::matches("_(docx|pdf|xlsx)_file(_list)?$|_readme_file"))
+tar_make(
+  names = tidyselect::matches("_(docx|pdf|xlsx)_file(_list)?$|_readme_file")
+)
+
 
 #' Report on the targets built by the run that has just finished
 #'
-#' Scoped by `tar_progress()` rather than by build time. `tar_meta()` holds one
-#' record per target from its last successful build and never prunes, so a
-#' report filtered on time returns historical warnings from targets that were
-#' skipped, and the time field is not reliably the build time in any case.
-#' `tar_progress()` resets each run and reports exactly what was attempted.
+#' Scoped by `tar_progress()`, which resets each run, because `tar_meta()`
+#' keeps warnings from each target's last build indefinitely.
 #'
-#' Branch hashes are stripped so a warning repeated across two hundred branches
-#' collapses to one row with a count, which is the difference between a readable
-#' report and a screenful of identical lines.
+#' `complete_only` must stay FALSE: with several fields it keeps only rows with
+#' no missing value in any of them, i.e. targets that both warned and errored.
 #'
-#' @return invisibly, a list of the error and warning tables
-report_run_messages <- function() {
-  
-  strip_branch <- function(x) sub("_[0-9a-f]{16}$", "", x)
-  
+#' Branches are reported by their position in the pattern, so a warning can be
+#' inspected with `tar_read(target, branches = i)`.
+#'
+#' @param max_branches most branch indices to list per message
+#' @return invisibly, a list of the error, warning and timing tables
+report_run_messages <- function(max_branches = 20L) {
   prog <- as.data.table(tar_progress())
   attempted <- prog[progress %chin% c("completed", "errored"), name]
-  
+
   meta <- as.data.table(tar_meta(
-    fields = c("warnings", "error", "seconds"), complete_only = TRUE))
-  recent <- meta[name %chin% attempted]
-  
+    fields = tidyselect::any_of(c("warnings", "error", "seconds", "children")),
+    complete_only = FALSE
+  ))
+
+  # Map each branch to its parent target and its position in the pattern
+  kids <- meta[, .(name = unlist(children)), by = .(target = name)]
+  kids <- kids[!is.na(name)]
+  kids[, branch := seq_len(.N), by = target]
+
+  recent <- merge(
+    meta[name %chin% attempted, .(name, warnings, error, seconds)],
+    kids,
+    by = "name",
+    all.x = TRUE
+  )
+  recent[is.na(target), target := name]
+
+  fmt_branches <- function(i) {
+    i <- sort(i[!is.na(i)])
+    if (!length(i)) {
+      return("not branched")
+    }
+    shown <- paste(head(i, max_branches), collapse = ", ")
+    if (length(i) > max_branches) {
+      shown <- paste0(shown, ", ... (", length(i), " in total)")
+    }
+    shown
+  }
+
+  print_messages <- function(d, col, heading) {
+    d <- d[!is.na(get(col)) & nzchar(get(col))]
+    cat(sprintf("\n---- %s (%d targets or branches) ----\n", heading, nrow(d)))
+    if (!nrow(d)) {
+      cat("None.\n")
+      return(invisible(d))
+    }
+    grouped <- d[,
+      .(n = .N, branches = fmt_branches(branch)),
+      by = c("target", col)
+    ][order(target, -n)]
+    for (i in seq_len(nrow(grouped))) {
+      cat(sprintf(
+        "\n%s  [%d]\n  branches: %s\n  %s\n",
+        grouped$target[i],
+        grouped$n[i],
+        grouped$branches[i],
+        grouped[[col]][i]
+      ))
+    }
+    invisible(d)
+  }
+
   cat("\n================ RUN SUMMARY ================\n")
-  if (nrow(prog)) print(prog[, .N, by = progress][order(-N)])
-  cat(sprintf("\nTotal build time: %.1f s\n",
-              sum(recent$seconds, na.rm = TRUE)))
-  
-  # ---- errors --------------------------------------------------------------
-  err <- recent[!is.na(error), .(target = strip_branch(name), error)]
-  cat(sprintf("\n---- ERRORS (%d branches) ----\n", nrow(err)))
-  if (nrow(err)) {
-    print(err[, .N, by = .(target, error)][order(-N)])
-  } else {
-    cat("None.\n")
+  if (nrow(prog)) {
+    print(prog[, .N, by = progress][order(-N)])
   }
-  
-  # ---- warnings ------------------------------------------------------------
-  wrn <- recent[!is.na(warnings), .(target = strip_branch(name), warnings)]
-  cat(sprintf("\n---- WARNINGS (%d branches) ----\n", nrow(wrn)))
-  if (nrow(wrn)) {
-    print(wrn[, .N, by = .(target, warnings)][order(-N)])
-  } else {
-    cat("None.\n")
-  }
-  
-  # ---- slowest -------------------------------------------------------------
-  slow <- recent[, .(seconds = round(sum(seconds, na.rm = TRUE), 1),
-                     branches = .N),
-                 by = .(target = strip_branch(name))][order(-seconds)]
+  cat(sprintf(
+    "\nTotal build time: %.1f s\n",
+    sum(recent$seconds, na.rm = TRUE)
+  ))
+
+  err <- print_messages(recent, "error", "ERRORS")
+  wrn <- print_messages(recent, "warnings", "WARNINGS")
+
+  slow <- recent[,
+    .(seconds = round(sum(seconds, na.rm = TRUE), 1), branches = .N),
+    by = target
+  ][order(-seconds)]
   cat("\n---- SLOWEST TARGETS ----\n")
   print(slow[seq_len(min(10L, .N))])
-  
-  # ---- provenance ----------------------------------------------------------
-  # Printed so the hash can be checked against the one embedded in the output
-  # folder READMEs and the xlsx filenames. Outputs carrying different hashes
-  # were built from different data and should not be quoted together.
+
+  # Printed so the hash can be checked against the one in the output folder
+  # READMEs and the xlsx filenames.
   cat("\n---- PROVENANCE ----\n")
   hash <- tryCatch(tar_read(analysis_data_hash), error = function(e) NA)
   cat("Analysis data hash:", if (is.na(hash)) "unavailable" else hash, "\n")
-  cat("Run completed     :",
-      format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"), "\n")
-  
-  # ---- stale output guard --------------------------------------------------
-  # A failed run leaves whatever was written before the failure in the output
-  # folders, where a co-author will open it without knowing the run did not
-  # finish. Say so loudly rather than relying on the console scrollback.
+  cat("Run completed     :", format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"), "\n")
+
+  # A failed run leaves earlier files in the output folders, where a co-author
+  # will open them without knowing the run did not finish.
   if (nrow(prog[progress == "errored"])) {
     cat("\n")
-    warning("Pipeline errored. Output folders may contain files from a ",
-            "partial run and should not be circulated until it completes ",
-            "cleanly.", call. = FALSE, immediate. = TRUE)
+    warning(
+      "Pipeline errored. Output folders may contain files from a ",
+      "partial run and should not be circulated until it completes ",
+      "cleanly.",
+      call. = FALSE,
+      immediate. = TRUE
+    )
   }
-  
+
   invisible(list(errors = err, warnings = wrn, slowest = slow))
 }
 

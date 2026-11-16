@@ -48,3 +48,7 @@ renv/
 /output/
 
 /dev/
+
+.vscode/*
+!.vscode/settings.json
+air.toml
