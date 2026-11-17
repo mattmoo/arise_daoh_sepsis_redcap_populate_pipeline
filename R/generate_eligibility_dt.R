@@ -17,8 +17,9 @@ generate_eligibility_dt <- function(
   max_lactate_dt
 ) {
   eligibility_dt <- merge(
-    index_event_dt,
     arise_eligibility_dt[, -"eligible"],
+    index_event_dt,
+    all.x = TRUE
   )
 
   eligibility_dt <- merge(
@@ -40,13 +41,6 @@ generate_eligibility_dt <- function(
     by = 'PRIM_HCU',
     all.x = TRUE
   )
-  eligibility_dt[,
-    age_years := floor(
-      as.numeric(difftime(ed_presentation_date, bthdate, units = 'days')) /
-        365.25
-    )
-  ]
-  eligibility_dt[, bthdate := NULL]
 
   eligibility_dt <- merge(
     eligibility_dt,

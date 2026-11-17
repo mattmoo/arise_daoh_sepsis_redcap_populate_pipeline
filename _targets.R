@@ -21,6 +21,7 @@ lapply(
 )
 options(tidyverse.quiet = TRUE)
 
+
 package_list <- c(
   "data.table",
   # "icd10amachi",
@@ -48,7 +49,8 @@ package_list <- c(
   "marginaleffects",
   "rsample",
   "pwr",
-  "modelsummary"
+  "modelsummary",
+  "broom"
   # "xlsx"
 )
 # new.packages <- package_list[!(package_list %in% installed.packages()[,"Package"])]
@@ -56,15 +58,16 @@ package_list <- c(
 
 tar_option_set(
   # use_crew = TRUE,
-  # controller = crew_controller_local(workers = 6, seconds_idle = 30),
-  # storage = "worker",
-  # retrieval = "worker",
-  # memory = "transient",
-  # garbage_collection = TRUE,
+  controller = crew_controller_local(workers = 6, seconds_idle = 30),
+  storage = "worker",
+  retrieval = "worker",
+  memory = "transient",
+  garbage_collection = TRUE,
+  error = 'continue',
   packages = package_list
 )
 
-data.table::setDTthreads(threads = 1)
+data.table::setDTthreads(threads = 7)
 
 conflicts_prefer(lubridate::year)
 
@@ -705,12 +708,12 @@ tar_plan(
   tar_target(
     initial_criteria_obj,
     cf_criteria() |>
-      exclude(~ age_years < 18, label = "Age < 18", category = "Pre-screen") |>
       exclude(
         ~ has_nmds_record == FALSE,
         label = "Not admitted (no NMDS event)",
         category = "Pre-screen"
       ) |>
+      exclude(~ age_years < 18, label = "Age < 18", category = "Pre-screen") |>
       exclude(
         ~ not_transfer == FALSE,
         label = "Transfer",

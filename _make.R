@@ -10,7 +10,8 @@ library(data.table)
 # =============================================================================
 
 tar_make(
-  names = tidyselect::matches("_(docx|pdf|xlsx)_file(_list)?$|_readme_file")
+  names = tidyselect::matches("_(docx|pdf|xlsx)_file(_list)?$|_readme_file"),
+  use_crew = TRUE
 )
 
 
@@ -26,8 +27,10 @@ tar_make(
 #' inspected with `tar_read(target, branches = i)`.
 #'
 #' @param max_branches most branch indices to list per message
+#' @param collapse_numbers replace numbers in warnings with N, so messages
+#'   differing only in a count are merged
 #' @return invisibly, a list of the error, warning and timing tables
-report_run_messages <- function(max_branches = 20L) {
+report_run_messages <- function(max_branches = 20L, collapse_numbers = TRUE) {
   prog <- as.data.table(tar_progress())
   attempted <- prog[progress %chin% c("completed", "errored"), name]
 
@@ -61,25 +64,44 @@ report_run_messages <- function(max_branches = 20L) {
     shown
   }
 
-  print_messages <- function(d, col, heading) {
+  # targets stores a target's warnings as one string joined by ". ", so they
+  # are split back out and counted. Numbers are collapsed to N for warnings so
+  # messages differing only in a count merge; errors are left verbatim.
+  print_messages <- function(d, col, heading, split = FALSE) {
     d <- d[!is.na(get(col)) & nzchar(get(col))]
     cat(sprintf("\n---- %s (%d targets or branches) ----\n", heading, nrow(d)))
     if (!nrow(d)) {
       cat("None.\n")
       return(invisible(d))
     }
-    grouped <- d[,
-      .(n = .N, branches = fmt_branches(branch)),
-      by = c("target", col)
+
+    long <- d[,
+      .(
+        msg = if (split) {
+          unlist(strsplit(get(col), ". ", fixed = TRUE))
+        } else {
+          get(col)
+        }
+      ),
+      by = .(target, branch, name)
+    ]
+    long[, msg := sub("\\.$", "", trimws(msg))]
+    if (split && collapse_numbers) {
+      long[, msg := gsub("\\b[0-9]+(\\.[0-9]+)?\\b", "N", msg)]
+    }
+
+    grouped <- long[,
+      .(n = .N, branches = fmt_branches(unique(branch))),
+      by = .(target, msg)
     ][order(target, -n)]
-    for (i in seq_len(nrow(grouped))) {
-      cat(sprintf(
-        "\n%s  [%d]\n  branches: %s\n  %s\n",
-        grouped$target[i],
-        grouped$n[i],
-        grouped$branches[i],
-        grouped[[col]][i]
-      ))
+
+    for (tg in unique(grouped$target)) {
+      g <- grouped[target == tg]
+      cat("\n", tg, "\n", sep = "")
+      cat(
+        sprintf("  %4dx  %s  [branches: %s]\n", g$n, g$msg, g$branches),
+        sep = ""
+      )
     }
     invisible(d)
   }
@@ -94,7 +116,7 @@ report_run_messages <- function(max_branches = 20L) {
   ))
 
   err <- print_messages(recent, "error", "ERRORS")
-  wrn <- print_messages(recent, "warnings", "WARNINGS")
+  wrn <- print_messages(recent, "warnings", "WARNINGS", split = TRUE)
 
   slow <- recent[,
     .(seconds = round(sum(seconds, na.rm = TRUE), 1), branches = .N),

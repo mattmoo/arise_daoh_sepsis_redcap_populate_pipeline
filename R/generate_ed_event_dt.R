@@ -14,37 +14,55 @@
 #' @return
 #' @author Matthew Moore
 #' @export
-generate_ed_event_dt <- function(adhb_event_dt,
-                                 moh_cohort_dt,
-                                 moh_nmds_event_dt,
-                                 moh_nnpac_event_dt,
-                                 adhb_infection_dt,
-                                 first_lactate_dt,
-                                 max_lactate_dt,
-                                 recap_datetime_fmt = "%Y-%m-%d %H:%M") {
-  
-  ed_event_dt = merge(adhb_event_dt[, .(nhi = NHI, 
-                                        AGENCY,
-                                        PMS_UNIQUE_IDENTIFIER, 
-                                        ed_presentation_datetime = Admit.Date.Time,
-                                        ed_triage_datetime = Triage.Date.Time,
-                                        ed_discharge_datetime = Discharge.Date.Time)],
-                      moh_cohort_dt[, .(
-                        nhi = supplied_nhi,
-                        date_of_birth = bthdate,
-                        date_of_death = dthdate,
-                        gender = GEND,
-                        ethnicity_priority = ethnicgp
-                      )], all.x = TRUE)
-  
+generate_ed_event_dt <- function(
+  adhb_event_dt,
+  moh_cohort_dt,
+  moh_nmds_event_dt,
+  moh_nnpac_event_dt,
+  adhb_infection_dt,
+  first_lactate_dt,
+  max_lactate_dt,
+  recap_datetime_fmt = "%Y-%m-%d %H:%M"
+) {
+  ed_event_dt <- merge(
+    adhb_event_dt[, .(
+      nhi = NHI,
+      AGENCY,
+      PMS_UNIQUE_IDENTIFIER,
+      ed_presentation_datetime = Admit.Date.Time,
+      ed_triage_datetime = Triage.Date.Time,
+      ed_discharge_datetime = Discharge.Date.Time
+    )],
+    moh_cohort_dt[, .(
+      nhi = supplied_nhi,
+      date_of_birth = bthdate,
+      date_of_death = dthdate,
+      gender = GEND,
+      ethnicity_priority = ethnicgp
+    )],
+    all.x = TRUE
+  )
+
+  ed_event_dt[,
+    age_years := floor(
+      as.numeric(difftime(
+        ed_presentation_datetime,
+        date_of_birth,
+        units = 'days'
+      )) /
+        365.25
+    )
+  ]
+
   # TODO: Tidy this up to prioritise infection type.
-  ed_event_dt = merge(ed_event_dt,
-                      adhb_infection_dt,
-                      by = 'PMS_UNIQUE_IDENTIFIER', all.x = TRUE)
-  
-  
-  
-  ed_event_dt = merge(
+  ed_event_dt <- merge(
+    ed_event_dt,
+    adhb_infection_dt,
+    by = 'PMS_UNIQUE_IDENTIFIER',
+    all.x = TRUE
+  )
+
+  ed_event_dt <- merge(
     ed_event_dt,
     moh_nmds_event_dt[, .(
       PMS_UNIQUE_IDENTIFIER,
@@ -57,8 +75,8 @@ generate_ed_event_dt <- function(adhb_event_dt,
     by = c('PMS_UNIQUE_IDENTIFIER', 'AGENCY'),
     all.x = TRUE
   )
-  
-  ed_event_dt = merge(
+
+  ed_event_dt <- merge(
     ed_event_dt,
     moh_nnpac_event_dt[, .(
       PMS_UNIQUE_IDENTIFIER,
@@ -68,28 +86,31 @@ generate_ed_event_dt <- function(adhb_event_dt,
     by = c('PMS_UNIQUE_IDENTIFIER'),
     all.x = TRUE
   )
-  
-  ed_event_dt = merge(
-    ed_event_dt, 
-    first_lactate_dt[, .(PMS_UNIQUE_IDENTIFIER, first_lactate = Result)], by = 'PMS_UNIQUE_IDENTIFIER', all.x = TRUE)
-  
-  ed_event_dt = merge(
-    ed_event_dt, max_lactate_dt[, .(
+
+  ed_event_dt <- merge(
+    ed_event_dt,
+    first_lactate_dt[, .(PMS_UNIQUE_IDENTIFIER, first_lactate = Result)],
+    by = 'PMS_UNIQUE_IDENTIFIER',
+    all.x = TRUE
+  )
+
+  ed_event_dt <- merge(
+    ed_event_dt,
+    max_lactate_dt[, .(
       PMS_UNIQUE_IDENTIFIER,
       highest_lactate_6h_reading = Result,
       highest_lactate_6h_time = Sample_time
-    )], by = 'PMS_UNIQUE_IDENTIFIER', all.x = TRUE)
-  
-  
-  setnames(ed_event_dt,
-           'PMS_UNIQUE_IDENTIFIER',
-           'pms_unique_identifier')
+    )],
+    by = 'PMS_UNIQUE_IDENTIFIER',
+    all.x = TRUE
+  )
+
+  setnames(ed_event_dt, 'PMS_UNIQUE_IDENTIFIER', 'pms_unique_identifier')
   ed_event_dt[, AGENCY := NULL]
-  
+
   assertthat::assert_that(
     nrow(ed_event_dt) == nrow(adhb_event_dt),
     !anyDuplicated(ed_event_dt$pms_unique_identifier)
-  )  
+  )
   return(ed_event_dt)
-  
 }
